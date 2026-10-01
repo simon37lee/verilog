@@ -1,0 +1,15 @@
+# 빌드 결과물
+build/
+obj_dir/
+obj_check/
+*.vvp
+*.vcd
+__pycache__/
+
+# 시뮬레이션 캡처 이미지
+*.bmp
+*.ppm
+
+# 편집기 임시 파일
+*.swp
+*~
