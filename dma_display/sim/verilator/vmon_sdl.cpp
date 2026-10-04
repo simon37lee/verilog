@@ -274,6 +274,8 @@ int main(int argc, char** argv) {
         }
         any_rise = rise[0] || rise[1] || rise[2];
         if (rise[TGT]) wire.drive(dut.get(), now_ps);
+        dut->f_wgray_s = dut->f_wgray_x;   // 타겟1 FIFO Gray 포인터: 그대로 연결 (에지 직전 값)
+        dut->f_rgray_s = dut->f_rgray_x;
         dut->eval();
         if (rise[SRC]) wire.observe(dut.get(), now_ps);
         return rise[PIX];
@@ -321,6 +323,8 @@ int main(int argc, char** argv) {
         }
         any_rise = true;
         if (rise[TGT]) wire.drive(dut.get(), t);
+        dut->f_wgray_s = dut->f_wgray_x;   // 타겟1 FIFO Gray 포인터: 그대로 연결 (에지 직전 값)
+        dut->f_rgray_s = dut->f_rgray_x;
         dut->eval();
         if (rise[SRC]) wire.observe(dut.get(), t);
         last_eval_ps = t;

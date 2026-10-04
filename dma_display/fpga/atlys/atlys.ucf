@@ -16,9 +16,12 @@ NET "btn_rst_n" TIG;
 NET "sw_errmap" LOC = "A10" | IOSTANDARD = LVCMOS33;
 NET "sw_errmap" TIG;
 
-## SW1: 타겟2 버스 skew 확대 (위 = 켜기)
-NET "sw_skew" LOC = "D14" | IOSTANDARD = LVCMOS33;
-NET "sw_skew" TIG;
+## SW4..SW1: skew 단계 (0 = 없음, 1~15 = 500~2000 ps), 타겟1/타겟2 똑같이
+NET "sw_skew<0>" LOC = "D14" | IOSTANDARD = LVCMOS33;    # SW1
+NET "sw_skew<1>" LOC = "C14" | IOSTANDARD = LVCMOS33;    # SW2
+NET "sw_skew<2>" LOC = "P15" | IOSTANDARD = LVCMOS33;    # SW3
+NET "sw_skew<3>" LOC = "P12" | IOSTANDARD = LVCMOS33;    # SW4
+NET "sw_skew<*>" TIG;
 
 ## LED (상태 표시용, 타이밍 무시)
 NET "led<0>" LOC = "U18" | IOSTANDARD = LVCMOS33;
@@ -52,10 +55,13 @@ NET "hdmi_d_n<2>" LOC = "A8";
 NET "clk_src" TNM_NET = "TNM_src";
 NET "clk_tgt" TNM_NET = "TNM_tgt";
 NET "clk_pix" TNM_NET = "TNM_pix";
-##   src -> tgt 는 TIG 대신 아주 느슨한 데이터 경로 제약을 걸어 둔다: 타이밍에 영향은 없고,
-##   타이밍 리포트에 타겟2 버스 비트별 지연이 찍혀서 실제 skew 를 확인할 수 있다
-TIMESPEC "TS_src_tgt" = FROM "TNM_src" TO "TNM_tgt" 60 ns DATAPATHONLY;
-TIMESPEC "TS_tgt_src" = FROM "TNM_tgt" TO "TNM_src" TIG;
+##   src <-> tgt (타겟2 버스, FIFO Gray 포인터와 메모리 읽기) 에는 TIG 대신 5 ns 데이터 경로 상한을 건다.
+##   - 너무 느슨하면 배치 툴이 skew 지연선을 칩 아무 데나 둬서 배선 지연 차이만 수 ns 가 된다
+##     (60 ns 일 때 추가 지연 0 단계에서도 4.8 ns) -> 설계한 500~2000 ps 단계가 묻힌다
+##   - 5 ns = 가장 긴 지연선 2 ns + 배선/선택 회로 여유. Gray 포인터 안전 조건 (skew < 상대 클럭 주기) 도 만족
+##   - 타이밍 리포트에 비트별 지연이 찍혀서 실제 skew 를 확인할 수 있다
+TIMESPEC "TS_src_tgt" = FROM "TNM_src" TO "TNM_tgt" 5 ns DATAPATHONLY;
+TIMESPEC "TS_tgt_src" = FROM "TNM_tgt" TO "TNM_src" 5 ns DATAPATHONLY;
 TIMESPEC "TS_src_pix" = FROM "TNM_src" TO "TNM_pix" TIG;
 TIMESPEC "TS_pix_src" = FROM "TNM_pix" TO "TNM_src" TIG;
 TIMESPEC "TS_tgt_pix" = FROM "TNM_tgt" TO "TNM_pix" TIG;

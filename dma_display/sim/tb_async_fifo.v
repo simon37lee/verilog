@@ -18,6 +18,7 @@ module tb_async_fifo;
     wire [DW-1:0] rdata;
     wire wfull, rempty;
     wire [AW:0] wlevel;
+    wire [AW:0] wgray, rgray;               // 도메인을 건너는 Gray 포인터 (그대로 연결)
 
     integer whalf = 15151, rhalf = 22727;   // 33 MHz / 22 MHz
     always #(whalf) wclk = ~wclk;
@@ -25,7 +26,8 @@ module tb_async_fifo;
 
     async_fifo #(.DW(DW), .AW(AW)) dut (
         .wclk(wclk), .wrst(rst), .winc(winc), .wdata(wdata), .wfull(wfull), .wlevel(wlevel),
-        .rclk(rclk), .rrst(rst), .rinc(rinc), .rdata(rdata), .rempty(rempty)
+        .rclk(rclk), .rrst(rst), .rinc(rinc), .rdata(rdata), .rempty(rempty),
+        .wgray_x(wgray), .wgray_s(wgray), .rgray_x(rgray), .rgray_s(rgray)
     );
 
     integer sent, recv, errors = 0, max_level = 0, run;

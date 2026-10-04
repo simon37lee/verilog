@@ -17,6 +17,7 @@ module dma_display_top (
     wire        n2_valid;
     wire [17:0] n2_addr;
     wire [7:0]  n2_data;
+    wire [4:0]  f_wgray, f_rgray;
 
     dma_display_core u_core (
         .clk_src(clk_src), .clk_tgt(clk_tgt), .clk_pix(clk_pix), .rst(rst), .errmap_mode(1'b0),
@@ -24,6 +25,7 @@ module dma_display_top (
         .n2_valid(n2_valid), .n2_addr(n2_addr), .n2_data(n2_data),
         // CDC 없이 직결 (의도적인 버그)
         .t2_valid(n2_valid), .t2_addr(n2_addr), .t2_data(n2_data),
+        .f_wgray_x(f_wgray), .f_wgray_s(f_wgray), .f_rgray_x(f_rgray), .f_rgray_s(f_rgray),
         .tgt_frames()
     );
 endmodule

@@ -21,7 +21,10 @@
 //   메모리: Block RAM 이 약 2.1 Mbit 이므로 버퍼를 200x200 (1:1 표시) 으로 줄인다.
 //           (400x400 x 3 = 3.84 Mbit 는 들어가지 않음)
 //
-//   스위치: SW0 = 타겟2 오류 누적 맵 (스크롤 멈춤 + 회색 무늬 + 타겟2 DMA 반복), SW1 = 타겟2 버스 skew 확대
+//   스위치: SW0 = 타겟2 오류 누적 맵 (스크롤 멈춤 + 회색 무늬 + 타겟2 DMA 반복)
+//           {SW4, SW3, SW2, SW1} = 도메인을 건너는 신호의 비트 간 skew 단계 (bus_skew.v)
+//             0 = 추가 지연 없음, 1~15 = 최대 지연 차이 500 ~ 2000 ps (약 107 ps 간격)
+//             타겟1 (async FIFO 의 Gray 포인터 5+5 비트) 과 타겟2 (직결 버스 25 비트) 에 똑같이 적용
 //
 //   LED: [0] PLL lock  [1] DCM lock  [2] RESET 버튼  [3]/[4]/[5] src/tgt/pix 클럭 깜빡임
 //        [6] vsync 32 프레임마다 토글  [7] 타겟1 DMA 프레임 32 개마다 토글
@@ -30,7 +33,7 @@ module dma_display_atlys (
     input  wire       clk_100m,
     input  wire       btn_rst_n,    // RESET 버튼 (T15 = M0 겸용 핀, 평소 1 / 누르면 0)
     input  wire       sw_errmap,    // SW0: 1 = 스크롤 멈춤 + 타겟2 오류 누적 맵 (빨간 점), 0 = 지움
-    input  wire       sw_skew,      // SW1: 1 = 타겟2 버스 비트마다 0~15 단 LUT 지연 (skew 확대)
+    input  wire [3:0] sw_skew,      // {SW4..SW1}: skew 단계 0 (없음), 1~15 (500~2000 ps). 타겟1/타겟2 똑같이
     output wire [7:0] led,
     output wire [2:0] hdmi_d_p,     // [0]=Blue, [1]=Green, [2]=Red
     output wire [2:0] hdmi_d_n,
@@ -116,11 +119,16 @@ module dma_display_atlys (
     wire        t2_valid;
     wire [15:0] t2_addr;
     wire [7:0]  t2_data;
+    wire [4:0]  f_wgray_x, f_wgray_s, f_rgray_x, f_rgray_s;
 
-    // 타겟2 버스: CDC 없이 직결 (의도적인 버그). SW1 이면 비트마다 다른 지연을 더한다
-    bus_skew #(.W(25)) u_skew (
-        .sel(sw_skew), .din({n2_valid, n2_addr, n2_data}), .dout({t2_valid, t2_addr, t2_data})
+    // 도메인을 건너는 신호마다 같은 skew 단계로 비트별 지연을 더한다
+    //   타겟2: CDC 없이 직결한 {valid, addr, data} (의도적인 버그) -> 비트가 섞여 노이즈
+    //   타겟1: async FIFO 의 Gray 포인터 (양방향) -> 한 번에 1 비트만 바뀌므로 깨지지 않아야 한다
+    bus_skew #(.W(25)) u_skew_t2 (
+        .level(sw_skew), .din({n2_valid, n2_addr, n2_data}), .dout({t2_valid, t2_addr, t2_data})
     );
+    bus_skew #(.W(5)) u_skew_t1w (.level(sw_skew), .din(f_wgray_x), .dout(f_wgray_s));
+    bus_skew #(.W(5)) u_skew_t1r (.level(sw_skew), .din(f_rgray_x), .dout(f_rgray_s));
 
     dma_display_core #(
         .W (200),
@@ -133,6 +141,7 @@ module dma_display_atlys (
         .r(r), .g(g), .b(b), .de(de), .hsync(hsync), .vsync(vsync),
         .n2_valid(n2_valid), .n2_addr(n2_addr), .n2_data(n2_data),
         .t2_valid(t2_valid), .t2_addr(t2_addr), .t2_data(t2_data),
+        .f_wgray_x(f_wgray_x), .f_wgray_s(f_wgray_s), .f_rgray_x(f_rgray_x), .f_rgray_s(f_rgray_s),
         .tgt_frames(tgt_frames)
     );
 

@@ -54,6 +54,11 @@ module dma_display_core #(
     input  wire        t2_valid,
     input  wire [AW-1:0] t2_addr,
     input  wire [7:0]  t2_data,
+    // 타겟1 async FIFO 의 Gray 포인터 (도메인을 건너는 신호). 보통은 *_x -> *_s 로 그대로 연결
+    output wire [4:0]  f_wgray_x,         // 쓰기 포인터 (clk_src)
+    input  wire [4:0]  f_wgray_s,         // -> clk_tgt 동기화기
+    output wire [4:0]  f_rgray_x,         // 읽기 포인터 (clk_tgt)
+    input  wire [4:0]  f_rgray_s,         // -> clk_src 동기화기
     // 상태 (clk_tgt) : 타겟1 에 복사 완료된 프레임 수
     output wire [15:0] tgt_frames
 );
@@ -180,7 +185,8 @@ module dma_display_core #(
     async_fifo #(.DW(9), .AW(FIFO_AW)) u_cdc_fifo (
         .wclk(clk_src), .wrst(rst_src), .winc(fifo_push), .wdata(fifo_wdata),
         .wfull(), .wlevel(fifo_level),
-        .rclk(clk_tgt), .rrst(rst_tgt), .rinc(fifo_pop), .rdata(fifo_rdata), .rempty(fifo_empty)
+        .rclk(clk_tgt), .rrst(rst_tgt), .rinc(fifo_pop), .rdata(fifo_rdata), .rempty(fifo_empty),
+        .wgray_x(f_wgray_x), .wgray_s(f_wgray_s), .rgray_x(f_rgray_x), .rgray_s(f_rgray_s)
     );
 
     wire          t1_we;

@@ -8,6 +8,9 @@
 //   - full/empty/wlevel 은 동기화 지연 때문에 항상 "보수적"(안전한 쪽)으로 보인다
 //   - 읽기 데이터는 show-ahead (rempty=0 이면 rdata 가 바로 유효)
 //   - wrst/rrst 는 각 도메인에 이미 동기화된 리셋이므로 동기식 리셋으로 사용
+//   - 도메인을 건너는 Gray 포인터는 모듈 밖으로 나갔다 들어온다 (*_x 출력 -> *_s 입력).
+//     보통은 그대로 연결하고, 실험에서는 비트마다 다른 배선 지연(skew)을 넣어 본다.
+//     Gray code 는 한 번에 1 비트만 바뀌므로 skew 가 상대 클럭 주기보다 작으면 안전하다.
 // ---------------------------------------------------------------------------
 module async_fifo #(
     parameter DW = 9,
@@ -25,7 +28,12 @@ module async_fifo #(
     input  wire          rrst,
     input  wire          rinc,
     output wire [DW-1:0] rdata,
-    output wire          rempty
+    output wire          rempty,
+    // 도메인을 건너는 Gray 포인터 (밖에서 *_x -> *_s 로 연결)
+    output wire [AW:0]   wgray_x,    // 쓰기 포인터 (wclk 레지스터)
+    input  wire [AW:0]   wgray_s,    // -> 읽기 쪽 동기화기 입력
+    output wire [AW:0]   rgray_x,    // 읽기 포인터 (rclk 레지스터)
+    input  wire [AW:0]   rgray_s     // -> 쓰기 쪽 동기화기 입력
 );
     localparam DEPTH = 1 << AW;
 
@@ -55,7 +63,7 @@ module async_fifo #(
 
     always @(posedge wclk) begin
         if (wrst) {rgray_w2, rgray_w1} <= 0;
-        else      {rgray_w2, rgray_w1} <= {rgray_w1, rgray};
+        else      {rgray_w2, rgray_w1} <= {rgray_w1, rgray_s};
     end
 
     // 꽉 참: 상위 2비트만 반대이고 나머지가 같으면 (Gray code 에서의 full 조건)
@@ -79,8 +87,11 @@ module async_fifo #(
 
     always @(posedge rclk) begin
         if (rrst) {wgray_r2, wgray_r1} <= 0;
-        else      {wgray_r2, wgray_r1} <= {wgray_r1, wgray};
+        else      {wgray_r2, wgray_r1} <= {wgray_r1, wgray_s};
     end
+
+    assign wgray_x = wgray;
+    assign rgray_x = rgray;
 
     assign rempty = (rgray == wgray_r2);
     assign rdata  = mem[rbin[AW-1:0]];
