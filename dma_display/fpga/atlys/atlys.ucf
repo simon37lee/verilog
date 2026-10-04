@@ -1,0 +1,62 @@
+## ---------------------------------------------------------------------------
+## dma_display_atlys 제약 파일 (Digilent Atlys, XC6SLX45-CSG324-3)
+## 핀 번호는 Digilent Atlys 마스터 UCF 기준. 보드 리비전이 다르면 회로도로 확인할 것.
+## ---------------------------------------------------------------------------
+
+## 100 MHz 오실레이터
+NET "clk_100m" LOC = "L15" | IOSTANDARD = LVCMOS33;
+NET "clk_100m" TNM_NET = "TNM_clk100";
+TIMESPEC "TS_clk100" = PERIOD "TNM_clk100" 10 ns HIGH 50%;
+
+## RESET 버튼 (빨간 버튼). 매뉴얼과 달리 실제 보드에서는 평소 1 (M0 겸용 핀) -> active-low
+NET "btn_rst_n" LOC = "T15" | IOSTANDARD = LVCMOS33;
+NET "btn_rst_n" TIG;
+
+## SW0: 타겟2 오류 누적 맵 (위 = 켜기)
+NET "sw_errmap" LOC = "A10" | IOSTANDARD = LVCMOS33;
+NET "sw_errmap" TIG;
+
+## SW1: 타겟2 버스 skew 확대 (위 = 켜기)
+NET "sw_skew" LOC = "D14" | IOSTANDARD = LVCMOS33;
+NET "sw_skew" TIG;
+
+## LED (상태 표시용, 타이밍 무시)
+NET "led<0>" LOC = "U18" | IOSTANDARD = LVCMOS33;
+NET "led<1>" LOC = "M14" | IOSTANDARD = LVCMOS33;
+NET "led<2>" LOC = "N14" | IOSTANDARD = LVCMOS33;
+NET "led<3>" LOC = "L14" | IOSTANDARD = LVCMOS33;
+NET "led<4>" LOC = "M13" | IOSTANDARD = LVCMOS33;
+NET "led<5>" LOC = "D4"  | IOSTANDARD = LVCMOS33;
+NET "led<6>" LOC = "P16" | IOSTANDARD = LVCMOS33;
+NET "led<7>" LOC = "N12" | IOSTANDARD = LVCMOS33;
+NET "led<*>" TIG;
+
+## HDMI OUT (J2 커넥터, Bank 0). IOSTANDARD 는 RTL 의 OBUFDS 에서 TMDS_33 으로 지정
+NET "hdmi_clk_p"  LOC = "B6";
+NET "hdmi_clk_n"  LOC = "A6";
+NET "hdmi_d_p<0>" LOC = "D8";
+NET "hdmi_d_n<0>" LOC = "C8";
+NET "hdmi_d_p<1>" LOC = "C7";
+NET "hdmi_d_n<1>" LOC = "A7";
+NET "hdmi_d_p<2>" LOC = "B8";
+NET "hdmi_d_n<2>" LOC = "A8";
+
+## ---------------------------------------------------------------------------
+## 클럭 도메인 간 경로
+##   PLL/DCM 출력 주기는 TS_clk100 에서 자동으로 파생된다.
+##   src / tgt / pix 는 설계상 서로 비동기 도메인이므로 그 사이 경로는 분석하지 않는다:
+##     - async FIFO 의 Gray 포인터 (2FF 동기화기가 처리)
+##     - 타겟2 직접 버스 n2_* -> t2_* (의도적인 CDC 버그, 타이밍을 맞출 방법도 없음)
+##   pix(25 MHz) <-> x5(125 MHz) 는 같은 PLL 의 동기 클럭이므로 그대로 분석한다.
+## ---------------------------------------------------------------------------
+NET "clk_src" TNM_NET = "TNM_src";
+NET "clk_tgt" TNM_NET = "TNM_tgt";
+NET "clk_pix" TNM_NET = "TNM_pix";
+##   src -> tgt 는 TIG 대신 아주 느슨한 데이터 경로 제약을 걸어 둔다: 타이밍에 영향은 없고,
+##   타이밍 리포트에 타겟2 버스 비트별 지연이 찍혀서 실제 skew 를 확인할 수 있다
+TIMESPEC "TS_src_tgt" = FROM "TNM_src" TO "TNM_tgt" 60 ns DATAPATHONLY;
+TIMESPEC "TS_tgt_src" = FROM "TNM_tgt" TO "TNM_src" TIG;
+TIMESPEC "TS_src_pix" = FROM "TNM_src" TO "TNM_pix" TIG;
+TIMESPEC "TS_pix_src" = FROM "TNM_pix" TO "TNM_src" TIG;
+TIMESPEC "TS_tgt_pix" = FROM "TNM_tgt" TO "TNM_pix" TIG;
+TIMESPEC "TS_pix_tgt" = FROM "TNM_pix" TO "TNM_tgt" TIG;

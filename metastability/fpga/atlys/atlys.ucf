@@ -1,0 +1,185 @@
+## ---------------------------------------------------------------------------
+## meta_lab_atlys 제약 파일 (Digilent Atlys, XC6SLX45-CSG324-3)
+## ---------------------------------------------------------------------------
+
+## 100 MHz 오실레이터
+NET "clk_100m" LOC = "L15" | IOSTANDARD = LVCMOS33;
+NET "clk_100m" TNM_NET = "TNM_clk100";
+TIMESPEC "TS_clk100" = PERIOD "TNM_clk100" 10 ns HIGH 50%;
+
+## RESET 버튼 (빨간 버튼). 매뉴얼과 달리 실제 보드에서는 평소 1 (M0 겸용 핀) -> active-low
+NET "btn_rst_n" LOC = "T15" | IOSTANDARD = LVCMOS33;
+NET "btn_rst_n" TIG;
+
+## SW0: 측정 회로 입력 맞바꾸기 (위 = 맞바꿈)
+NET "sw_swap" LOC = "A10" | IOSTANDARD = LVCMOS33;
+NET "sw_swap" TIG;
+
+## SW1: 그래프 확대 (위 = 확대)
+NET "sw_zoom" LOC = "D14" | IOSTANDARD = LVCMOS33;
+NET "sw_zoom" TIG;
+
+## LED
+NET "led<0>" LOC = "U18" | IOSTANDARD = LVCMOS33;
+NET "led<1>" LOC = "M14" | IOSTANDARD = LVCMOS33;
+NET "led<2>" LOC = "N14" | IOSTANDARD = LVCMOS33;
+NET "led<3>" LOC = "L14" | IOSTANDARD = LVCMOS33;
+NET "led<4>" LOC = "M13" | IOSTANDARD = LVCMOS33;
+NET "led<5>" LOC = "D4"  | IOSTANDARD = LVCMOS33;
+NET "led<6>" LOC = "P16" | IOSTANDARD = LVCMOS33;
+NET "led<7>" LOC = "N12" | IOSTANDARD = LVCMOS33;
+NET "led<*>" TIG;
+
+## HDMI OUT (J2 커넥터, Bank 0). IOSTANDARD 는 RTL 의 OBUFDS 에서 TMDS_33 으로 지정
+NET "hdmi_clk_p"  LOC = "B6";
+NET "hdmi_clk_n"  LOC = "A6";
+NET "hdmi_d_p<0>" LOC = "D8";
+NET "hdmi_d_n<0>" LOC = "C8";
+NET "hdmi_d_p<1>" LOC = "C7";
+NET "hdmi_d_n<1>" LOC = "A7";
+NET "hdmi_d_p<2>" LOC = "B8";
+NET "hdmi_d_n<2>" LOC = "A8";
+
+## ---------------------------------------------------------------------------
+## TDC: 샘플링 FF -> carry chain -> 탭 FF (clk_s) 경로는 타이밍을 맞추는 경로가 아니다
+##   (변화가 지연선 중간까지 갔을 때 샘플링하는 것이 목적). 아주 느슨한 데이터 경로 제약만 걸어서
+##   타이밍 리포트에 탭별 도착 시간이 찍히게 한다 -> 탭 지연과 SAMPLE_PHASE 선택에 쓴다.
+## ---------------------------------------------------------------------------
+INST "u_core/u_det_*/u_ff1/q"         TNM = "TNM_ff1";
+INST "u_core/u_det_*/u_chain/taps_*"  TNM = "TNM_taps";
+TIMESPEC "TS_tdc" = FROM "TNM_ff1" TO "TNM_taps" 20 ns DATAPATHONLY;
+
+## ---------------------------------------------------------------------------
+## TDC 배치 고정: 다시 빌드해도 탭 지연이 바뀌지 않게 지연선(CARRY4 64 개)을 열 하나에 고정하고,
+## 샘플링 FF 를 지연선 입구 바로 옆에 둔다. 위치를 바꾸면 `make taps` 로 TAP_X10_A/B 를 다시 맞출 것.
+## ---------------------------------------------------------------------------
+INST "u_core/u_det_a/u_ff1/q" LOC = "SLICE_X13Y3";
+INST "u_core/u_det_a/u_chain/g_c4[0].g_first.u_c4" LOC = "SLICE_X12Y3";
+INST "u_core/u_det_a/u_chain/g_c4[1].g_next.u_c4" LOC = "SLICE_X12Y4";
+INST "u_core/u_det_a/u_chain/g_c4[2].g_next.u_c4" LOC = "SLICE_X12Y5";
+INST "u_core/u_det_a/u_chain/g_c4[3].g_next.u_c4" LOC = "SLICE_X12Y6";
+INST "u_core/u_det_a/u_chain/g_c4[4].g_next.u_c4" LOC = "SLICE_X12Y7";
+INST "u_core/u_det_a/u_chain/g_c4[5].g_next.u_c4" LOC = "SLICE_X12Y8";
+INST "u_core/u_det_a/u_chain/g_c4[6].g_next.u_c4" LOC = "SLICE_X12Y9";
+INST "u_core/u_det_a/u_chain/g_c4[7].g_next.u_c4" LOC = "SLICE_X12Y10";
+INST "u_core/u_det_a/u_chain/g_c4[8].g_next.u_c4" LOC = "SLICE_X12Y11";
+INST "u_core/u_det_a/u_chain/g_c4[9].g_next.u_c4" LOC = "SLICE_X12Y12";
+INST "u_core/u_det_a/u_chain/g_c4[10].g_next.u_c4" LOC = "SLICE_X12Y13";
+INST "u_core/u_det_a/u_chain/g_c4[11].g_next.u_c4" LOC = "SLICE_X12Y14";
+INST "u_core/u_det_a/u_chain/g_c4[12].g_next.u_c4" LOC = "SLICE_X12Y15";
+INST "u_core/u_det_a/u_chain/g_c4[13].g_next.u_c4" LOC = "SLICE_X12Y16";
+INST "u_core/u_det_a/u_chain/g_c4[14].g_next.u_c4" LOC = "SLICE_X12Y17";
+INST "u_core/u_det_a/u_chain/g_c4[15].g_next.u_c4" LOC = "SLICE_X12Y18";
+INST "u_core/u_det_a/u_chain/g_c4[16].g_next.u_c4" LOC = "SLICE_X12Y19";
+INST "u_core/u_det_a/u_chain/g_c4[17].g_next.u_c4" LOC = "SLICE_X12Y20";
+INST "u_core/u_det_a/u_chain/g_c4[18].g_next.u_c4" LOC = "SLICE_X12Y21";
+INST "u_core/u_det_a/u_chain/g_c4[19].g_next.u_c4" LOC = "SLICE_X12Y22";
+INST "u_core/u_det_a/u_chain/g_c4[20].g_next.u_c4" LOC = "SLICE_X12Y23";
+INST "u_core/u_det_a/u_chain/g_c4[21].g_next.u_c4" LOC = "SLICE_X12Y24";
+INST "u_core/u_det_a/u_chain/g_c4[22].g_next.u_c4" LOC = "SLICE_X12Y25";
+INST "u_core/u_det_a/u_chain/g_c4[23].g_next.u_c4" LOC = "SLICE_X12Y26";
+INST "u_core/u_det_a/u_chain/g_c4[24].g_next.u_c4" LOC = "SLICE_X12Y27";
+INST "u_core/u_det_a/u_chain/g_c4[25].g_next.u_c4" LOC = "SLICE_X12Y28";
+INST "u_core/u_det_a/u_chain/g_c4[26].g_next.u_c4" LOC = "SLICE_X12Y29";
+INST "u_core/u_det_a/u_chain/g_c4[27].g_next.u_c4" LOC = "SLICE_X12Y30";
+INST "u_core/u_det_a/u_chain/g_c4[28].g_next.u_c4" LOC = "SLICE_X12Y31";
+INST "u_core/u_det_a/u_chain/g_c4[29].g_next.u_c4" LOC = "SLICE_X12Y32";
+INST "u_core/u_det_a/u_chain/g_c4[30].g_next.u_c4" LOC = "SLICE_X12Y33";
+INST "u_core/u_det_a/u_chain/g_c4[31].g_next.u_c4" LOC = "SLICE_X12Y34";
+INST "u_core/u_det_a/u_chain/g_c4[32].g_next.u_c4" LOC = "SLICE_X12Y35";
+INST "u_core/u_det_a/u_chain/g_c4[33].g_next.u_c4" LOC = "SLICE_X12Y36";
+INST "u_core/u_det_a/u_chain/g_c4[34].g_next.u_c4" LOC = "SLICE_X12Y37";
+INST "u_core/u_det_a/u_chain/g_c4[35].g_next.u_c4" LOC = "SLICE_X12Y38";
+INST "u_core/u_det_a/u_chain/g_c4[36].g_next.u_c4" LOC = "SLICE_X12Y39";
+INST "u_core/u_det_a/u_chain/g_c4[37].g_next.u_c4" LOC = "SLICE_X12Y40";
+INST "u_core/u_det_a/u_chain/g_c4[38].g_next.u_c4" LOC = "SLICE_X12Y41";
+INST "u_core/u_det_a/u_chain/g_c4[39].g_next.u_c4" LOC = "SLICE_X12Y42";
+INST "u_core/u_det_a/u_chain/g_c4[40].g_next.u_c4" LOC = "SLICE_X12Y43";
+INST "u_core/u_det_a/u_chain/g_c4[41].g_next.u_c4" LOC = "SLICE_X12Y44";
+INST "u_core/u_det_a/u_chain/g_c4[42].g_next.u_c4" LOC = "SLICE_X12Y45";
+INST "u_core/u_det_a/u_chain/g_c4[43].g_next.u_c4" LOC = "SLICE_X12Y46";
+INST "u_core/u_det_a/u_chain/g_c4[44].g_next.u_c4" LOC = "SLICE_X12Y47";
+INST "u_core/u_det_a/u_chain/g_c4[45].g_next.u_c4" LOC = "SLICE_X12Y48";
+INST "u_core/u_det_a/u_chain/g_c4[46].g_next.u_c4" LOC = "SLICE_X12Y49";
+INST "u_core/u_det_a/u_chain/g_c4[47].g_next.u_c4" LOC = "SLICE_X12Y50";
+INST "u_core/u_det_a/u_chain/g_c4[48].g_next.u_c4" LOC = "SLICE_X12Y51";
+INST "u_core/u_det_a/u_chain/g_c4[49].g_next.u_c4" LOC = "SLICE_X12Y52";
+INST "u_core/u_det_a/u_chain/g_c4[50].g_next.u_c4" LOC = "SLICE_X12Y53";
+INST "u_core/u_det_a/u_chain/g_c4[51].g_next.u_c4" LOC = "SLICE_X12Y54";
+INST "u_core/u_det_a/u_chain/g_c4[52].g_next.u_c4" LOC = "SLICE_X12Y55";
+INST "u_core/u_det_a/u_chain/g_c4[53].g_next.u_c4" LOC = "SLICE_X12Y56";
+INST "u_core/u_det_a/u_chain/g_c4[54].g_next.u_c4" LOC = "SLICE_X12Y57";
+INST "u_core/u_det_a/u_chain/g_c4[55].g_next.u_c4" LOC = "SLICE_X12Y58";
+INST "u_core/u_det_a/u_chain/g_c4[56].g_next.u_c4" LOC = "SLICE_X12Y59";
+INST "u_core/u_det_a/u_chain/g_c4[57].g_next.u_c4" LOC = "SLICE_X12Y60";
+INST "u_core/u_det_a/u_chain/g_c4[58].g_next.u_c4" LOC = "SLICE_X12Y61";
+INST "u_core/u_det_a/u_chain/g_c4[59].g_next.u_c4" LOC = "SLICE_X12Y62";
+INST "u_core/u_det_a/u_chain/g_c4[60].g_next.u_c4" LOC = "SLICE_X12Y63";
+INST "u_core/u_det_a/u_chain/g_c4[61].g_next.u_c4" LOC = "SLICE_X12Y64";
+INST "u_core/u_det_a/u_chain/g_c4[62].g_next.u_c4" LOC = "SLICE_X12Y65";
+INST "u_core/u_det_a/u_chain/g_c4[63].g_next.u_c4" LOC = "SLICE_X12Y66";
+INST "u_core/u_det_b/u_ff1/q" LOC = "SLICE_X51Y31";
+INST "u_core/u_det_b/u_chain/g_c4[0].g_first.u_c4" LOC = "SLICE_X50Y31";
+INST "u_core/u_det_b/u_chain/g_c4[1].g_next.u_c4" LOC = "SLICE_X50Y32";
+INST "u_core/u_det_b/u_chain/g_c4[2].g_next.u_c4" LOC = "SLICE_X50Y33";
+INST "u_core/u_det_b/u_chain/g_c4[3].g_next.u_c4" LOC = "SLICE_X50Y34";
+INST "u_core/u_det_b/u_chain/g_c4[4].g_next.u_c4" LOC = "SLICE_X50Y35";
+INST "u_core/u_det_b/u_chain/g_c4[5].g_next.u_c4" LOC = "SLICE_X50Y36";
+INST "u_core/u_det_b/u_chain/g_c4[6].g_next.u_c4" LOC = "SLICE_X50Y37";
+INST "u_core/u_det_b/u_chain/g_c4[7].g_next.u_c4" LOC = "SLICE_X50Y38";
+INST "u_core/u_det_b/u_chain/g_c4[8].g_next.u_c4" LOC = "SLICE_X50Y39";
+INST "u_core/u_det_b/u_chain/g_c4[9].g_next.u_c4" LOC = "SLICE_X50Y40";
+INST "u_core/u_det_b/u_chain/g_c4[10].g_next.u_c4" LOC = "SLICE_X50Y41";
+INST "u_core/u_det_b/u_chain/g_c4[11].g_next.u_c4" LOC = "SLICE_X50Y42";
+INST "u_core/u_det_b/u_chain/g_c4[12].g_next.u_c4" LOC = "SLICE_X50Y43";
+INST "u_core/u_det_b/u_chain/g_c4[13].g_next.u_c4" LOC = "SLICE_X50Y44";
+INST "u_core/u_det_b/u_chain/g_c4[14].g_next.u_c4" LOC = "SLICE_X50Y45";
+INST "u_core/u_det_b/u_chain/g_c4[15].g_next.u_c4" LOC = "SLICE_X50Y46";
+INST "u_core/u_det_b/u_chain/g_c4[16].g_next.u_c4" LOC = "SLICE_X50Y47";
+INST "u_core/u_det_b/u_chain/g_c4[17].g_next.u_c4" LOC = "SLICE_X50Y48";
+INST "u_core/u_det_b/u_chain/g_c4[18].g_next.u_c4" LOC = "SLICE_X50Y49";
+INST "u_core/u_det_b/u_chain/g_c4[19].g_next.u_c4" LOC = "SLICE_X50Y50";
+INST "u_core/u_det_b/u_chain/g_c4[20].g_next.u_c4" LOC = "SLICE_X50Y51";
+INST "u_core/u_det_b/u_chain/g_c4[21].g_next.u_c4" LOC = "SLICE_X50Y52";
+INST "u_core/u_det_b/u_chain/g_c4[22].g_next.u_c4" LOC = "SLICE_X50Y53";
+INST "u_core/u_det_b/u_chain/g_c4[23].g_next.u_c4" LOC = "SLICE_X50Y54";
+INST "u_core/u_det_b/u_chain/g_c4[24].g_next.u_c4" LOC = "SLICE_X50Y55";
+INST "u_core/u_det_b/u_chain/g_c4[25].g_next.u_c4" LOC = "SLICE_X50Y56";
+INST "u_core/u_det_b/u_chain/g_c4[26].g_next.u_c4" LOC = "SLICE_X50Y57";
+INST "u_core/u_det_b/u_chain/g_c4[27].g_next.u_c4" LOC = "SLICE_X50Y58";
+INST "u_core/u_det_b/u_chain/g_c4[28].g_next.u_c4" LOC = "SLICE_X50Y59";
+INST "u_core/u_det_b/u_chain/g_c4[29].g_next.u_c4" LOC = "SLICE_X50Y60";
+INST "u_core/u_det_b/u_chain/g_c4[30].g_next.u_c4" LOC = "SLICE_X50Y61";
+INST "u_core/u_det_b/u_chain/g_c4[31].g_next.u_c4" LOC = "SLICE_X50Y62";
+INST "u_core/u_det_b/u_chain/g_c4[32].g_next.u_c4" LOC = "SLICE_X50Y63";
+INST "u_core/u_det_b/u_chain/g_c4[33].g_next.u_c4" LOC = "SLICE_X50Y64";
+INST "u_core/u_det_b/u_chain/g_c4[34].g_next.u_c4" LOC = "SLICE_X50Y65";
+INST "u_core/u_det_b/u_chain/g_c4[35].g_next.u_c4" LOC = "SLICE_X50Y66";
+INST "u_core/u_det_b/u_chain/g_c4[36].g_next.u_c4" LOC = "SLICE_X50Y67";
+INST "u_core/u_det_b/u_chain/g_c4[37].g_next.u_c4" LOC = "SLICE_X50Y68";
+INST "u_core/u_det_b/u_chain/g_c4[38].g_next.u_c4" LOC = "SLICE_X50Y69";
+INST "u_core/u_det_b/u_chain/g_c4[39].g_next.u_c4" LOC = "SLICE_X50Y70";
+INST "u_core/u_det_b/u_chain/g_c4[40].g_next.u_c4" LOC = "SLICE_X50Y71";
+INST "u_core/u_det_b/u_chain/g_c4[41].g_next.u_c4" LOC = "SLICE_X50Y72";
+INST "u_core/u_det_b/u_chain/g_c4[42].g_next.u_c4" LOC = "SLICE_X50Y73";
+INST "u_core/u_det_b/u_chain/g_c4[43].g_next.u_c4" LOC = "SLICE_X50Y74";
+INST "u_core/u_det_b/u_chain/g_c4[44].g_next.u_c4" LOC = "SLICE_X50Y75";
+INST "u_core/u_det_b/u_chain/g_c4[45].g_next.u_c4" LOC = "SLICE_X50Y76";
+INST "u_core/u_det_b/u_chain/g_c4[46].g_next.u_c4" LOC = "SLICE_X50Y77";
+INST "u_core/u_det_b/u_chain/g_c4[47].g_next.u_c4" LOC = "SLICE_X50Y78";
+INST "u_core/u_det_b/u_chain/g_c4[48].g_next.u_c4" LOC = "SLICE_X50Y79";
+INST "u_core/u_det_b/u_chain/g_c4[49].g_next.u_c4" LOC = "SLICE_X50Y80";
+INST "u_core/u_det_b/u_chain/g_c4[50].g_next.u_c4" LOC = "SLICE_X50Y81";
+INST "u_core/u_det_b/u_chain/g_c4[51].g_next.u_c4" LOC = "SLICE_X50Y82";
+INST "u_core/u_det_b/u_chain/g_c4[52].g_next.u_c4" LOC = "SLICE_X50Y83";
+INST "u_core/u_det_b/u_chain/g_c4[53].g_next.u_c4" LOC = "SLICE_X50Y84";
+INST "u_core/u_det_b/u_chain/g_c4[54].g_next.u_c4" LOC = "SLICE_X50Y85";
+INST "u_core/u_det_b/u_chain/g_c4[55].g_next.u_c4" LOC = "SLICE_X50Y86";
+INST "u_core/u_det_b/u_chain/g_c4[56].g_next.u_c4" LOC = "SLICE_X50Y87";
+INST "u_core/u_det_b/u_chain/g_c4[57].g_next.u_c4" LOC = "SLICE_X50Y88";
+INST "u_core/u_det_b/u_chain/g_c4[58].g_next.u_c4" LOC = "SLICE_X50Y89";
+INST "u_core/u_det_b/u_chain/g_c4[59].g_next.u_c4" LOC = "SLICE_X50Y90";
+INST "u_core/u_det_b/u_chain/g_c4[60].g_next.u_c4" LOC = "SLICE_X50Y91";
+INST "u_core/u_det_b/u_chain/g_c4[61].g_next.u_c4" LOC = "SLICE_X50Y92";
+INST "u_core/u_det_b/u_chain/g_c4[62].g_next.u_c4" LOC = "SLICE_X50Y93";
+INST "u_core/u_det_b/u_chain/g_c4[63].g_next.u_c4" LOC = "SLICE_X50Y94";

@@ -25,6 +25,8 @@
 //     --skew-ns X    타겟2 버스 비트 간 최대 배선 지연 (기본 10, 0 이면 이상적인 배선)
 //     --meta-ps X    메타스테빌리티 창 (기본 100)
 //     --full-eval    모든 클럭 에지마다 eval() (최적화 전 기준 방식, 결과 비교용)
+//     --tgt-mhz F    타겟 클럭 주파수 (기본 22). 33 MHz 보다 크면 타겟2 픽셀 누락이 없어진다
+//     --errmap       스크롤을 멈추고 타겟2 오류 누적 맵(빨간 점)을 켠다 (보드의 SW0)
 //
 //   조작:  SPACE 일시정지 / S 스크린샷(BMP) / ESC 종료
 //          ↑ / ↓  타겟2 배선 지연(skew) ±1 ns (0 ~ 15 ns, 0 이면 펄스 누락 효과만 남음)
@@ -205,9 +207,9 @@ void save_bmp(const Monitor& m, const char* name) {
 
 int main(int argc, char** argv) {
     int    scale = 1;
-    bool   limit = true, check = false, full_eval = false;
+    bool   limit = true, check = false, full_eval = false, errmap = false;
     long   max_frames = -1;
-    double skew_ns = 10.0, meta_ps = 100.0;
+    double skew_ns = 10.0, meta_ps = 100.0, tgt_mhz = 0.0;
     const char* dump = nullptr;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--scale") && i + 1 < argc)        scale = atoi(argv[++i]);
@@ -218,6 +220,8 @@ int main(int argc, char** argv) {
         else if (!strcmp(argv[i], "--full-eval"))               full_eval = true;
         else if (!strcmp(argv[i], "--skew-ns") && i + 1 < argc) skew_ns = atof(argv[++i]);
         else if (!strcmp(argv[i], "--meta-ps") && i + 1 < argc) meta_ps = atof(argv[++i]);
+        else if (!strcmp(argv[i], "--tgt-mhz") && i + 1 < argc) tgt_mhz = atof(argv[++i]);
+        else if (!strcmp(argv[i], "--errmap"))                  errmap = true;
     }
     Verilated::commandArgs(argc, argv);
 
@@ -243,11 +247,16 @@ int main(int argc, char** argv) {
         {15152, 15152, &dut->clk_src},
         {22727, 22727, &dut->clk_tgt},
     };
+    if (tgt_mhz > 0) {
+        const uint64_t half = (uint64_t)(5e5 / tgt_mhz + 0.5);
+        clocks[TGT].half_ps = clocks[TGT].next_ps = half;
+    }
     int64_t now_ps = 0;
     bool    any_rise = false;   // 마지막 step 에 상승 에지가 있었는지
 
     dut->clk_pix = dut->clk_src = dut->clk_tgt = 0;
     dut->rst = 1;
+    dut->errmap_mode = errmap;
     dut->eval();
 
     // ---- 기준 방식: 모든 에지(상승/하강)마다 eval. 결과 비교용 -----------------

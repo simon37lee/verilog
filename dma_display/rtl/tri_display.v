@@ -4,22 +4,33 @@
 //   열 0 (x   6~205) : 소스     (테두리 초록)  "SRC 33MHZ"
 //   열 1 (x 220~419) : 타겟1   (테두리 주황)  "TGT1 FIFO"   async FIFO 로 받은 것
 //   열 2 (x 434~633) : 타겟2   (테두리 빨강)  "TGT2 NO CDC" CDC 없이 받은 것
-//   y 140~339 에 200x200 으로 표시 (400x400 버퍼를 가로/세로 1/2 로 솎아서 읽음)
+//   y 140~339 에 200x200 으로 표시 (버퍼를 가로/세로 STEP 픽셀마다 솎아서 읽음:
+//   400x400 버퍼는 STEP=2, 200x200 버퍼는 STEP=1)
 //   이미지 위(y 116~129)에 라벨 (5x7 폰트, 2배 확대)
 //
 //   파이프라인 (sync 신호도 같이 3클럭 지연):
 //     T0 video_timing  ->  T1 RAM 주소/영역/라벨  ->  T2 RAM 데이터  ->  T3 RGB 출력
+//
+//   오류 누적 맵 (errmap = 1, 스크롤이 멈춘 상태에서 사용):
+//     타겟2 픽셀이 타겟1 과 다르면 화면 좌표별 1비트 맵에 표시하고, 맵에 표시된 픽셀은
+//     타겟2 열에 빨간 점으로 계속 보여준다. 깨진 픽셀은 다음 프레임 복사로 곧 덮여서
+//     눈에 잘 안 띄므로, 한 번이라도 깨진 자리를 남겨서 CDC 없는 전송의 오류를 눈으로 본다.
+//     errmap 을 켠 뒤 SETTLE 프레임 동안은 (스크롤이 멈추고 두 타겟이 같은 프레임이 될 때까지)
+//     맵을 지우기만 하고, errmap = 0 이면 맵을 계속 지운다.
 // ---------------------------------------------------------------------------
 module tri_display #(
     parameter BUF_W  = 400,
+    parameter STEP   = 2,                // 버퍼 솎음 간격 (BUF_W / IMG)
     parameter AW     = 18,
-    parameter IMG    = 200,              // 화면에 보이는 크기 (버퍼의 1/2)
+    parameter IMG    = 200,              // 화면에 보이는 크기
     parameter TOP    = 140,
     parameter LABEL_Y = 116,
-    parameter BORDER = 2
+    parameter BORDER = 2,
+    parameter SETTLE = 8                 // errmap 을 켠 뒤 누적을 시작할 때까지 프레임 수
 ) (
     input  wire          clk,
     input  wire          rst,
+    input  wire          errmap,         // 오류 누적 맵 켜기 (비동기 입력, 여기서 동기화)
     // RAM port B 읽기 (세 버퍼 같은 주소)
     output reg  [AW-1:0] ram_addr,
     input  wire [7:0]    src_rdata,
@@ -108,9 +119,11 @@ module tri_display #(
 
     reg de1, hs1, vs1, img1, edge1, text1;
     reg [1:0] col1;
+    reg [15:0] err_addr1;                // 오류 맵 주소 = ly * IMG + lx (화면 좌표)
     always @(posedge clk) begin
-        // 버퍼 주소 = (2*ly) * 400 + 2*lx  (1/2 로 솎아 읽기)
-        ram_addr <= in_img ? (ly * (2 * BUF_W) + 2 * lx) : {AW{1'b0}};
+        // 버퍼 주소 = (STEP*ly) * BUF_W + STEP*lx  (STEP 픽셀마다 솎아 읽기)
+        ram_addr <= in_img ? (ly * (STEP * BUF_W) + STEP * lx) : {AW{1'b0}};
+        err_addr1 <= in_img ? (ly * IMG + lx) : 16'd0;
         {de1, hs1, vs1}     <= {de0, hs0, vs0};
         {img1, edge1, text1} <= {in_img, on_edge, text_on};
         col1                 <= col;
@@ -119,11 +132,38 @@ module tri_display #(
     // ---- T2: RAM 데이터 도착 ----------------------------------------------
     reg de2, hs2, vs2, img2, edge2, text2;
     reg [1:0] col2;
+    reg [15:0] err_addr2;
     always @(posedge clk) begin
         {de2, hs2, vs2}      <= {de1, hs1, vs1};
         {img2, edge2, text2} <= {img1, edge1, text1};
         col2                 <= col1;
+        err_addr2            <= err_addr1;
     end
+
+    // ---- 오류 누적 맵 -------------------------------------------------------
+    //   T1 주소로 읽고 (T2 에 도착), 타겟2 열을 지나는 T3 에 같은 주소로 다시 쓴다.
+    //   세 열이 같은 주소를 읽지만 쓰기는 타겟2 열에서만 하므로 프레임당 주소마다 한 번.
+    reg [1:0] errmap_sr;
+    reg       vs_d;
+    reg [3:0] settle;
+    always @(posedge clk) begin
+        errmap_sr <= {errmap_sr[0], errmap};
+        vs_d      <= vs0;
+        if (rst || !errmap_sr[1])
+            settle <= 0;
+        else if (vs_d && !vs0 && settle != SETTLE)   // vsync 시작마다 (음극성)
+            settle <= settle + 1'b1;
+    end
+    wire acc = (settle == SETTLE);
+
+    wire err_q;
+    wire diff     = (tgt1_rdata != tgt2_rdata);
+    wire err_mark = acc && (err_q || diff);
+
+    dpram #(.DW(1), .AW(16), .DEPTH(IMG * IMG)) u_errmap (
+        .clk_a(clk), .we_a(img2 && col2 == 2'd2), .addr_a(err_addr2), .wdata_a(err_mark), .rdata_a(),
+        .clk_b(clk), .addr_b(err_addr1), .rdata_b(err_q)
+    );
 
     // ---- T3: RGB 출력 -----------------------------------------------------
     wire [7:0]  pix = (col2 == 2'd1) ? tgt1_rdata : (col2 == 2'd2) ? tgt2_rdata : src_rdata;
@@ -139,6 +179,8 @@ module tri_display #(
             {r, g, b} <= 24'h202020;                       // 배경
         else if (edge2)
             {r, g, b} <= edge_color;                       // 테두리
+        else if (col2 == 2'd2 && err_mark)
+            {r, g, b} <= 24'hFF0000;                       // 오류 누적 맵 (빨강)
         else                                               // RGB332 -> RGB888
             {r, g, b} <= {pix[7:5], pix[7:5], pix[7:6],
                           pix[4:2], pix[4:2], pix[4:3],

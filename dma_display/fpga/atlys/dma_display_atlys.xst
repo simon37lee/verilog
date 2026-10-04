@@ -1,0 +1,12 @@
+set -tmpdir xst/tmp
+set -xsthdpdir xst
+run
+-ifn ../dma_display_atlys.prj
+-ifmt mixed
+-ofn dma_display_atlys
+-ofmt NGC
+-p xc6slx45-csg324-3
+-top dma_display_atlys
+-opt_mode Speed
+-opt_level 1
+-keep_hierarchy No

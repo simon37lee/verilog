@@ -16,6 +16,7 @@
 //            -> 펄스 누락, 버스 비트가 섞인 값(skew/metastability) 으로 노이즈 발생
 //
 //   소스 도메인 프레임 순서: 그리기 -> 타겟1 DMA -> 타겟2 DMA -> 대기
+//     (errmap_mode 에서는 대기 대신 다음 틱까지 타겟2 DMA 를 반복)
 //
 //   타겟2 버스는 모듈 밖으로 나갔다 들어온다 (n2_* 출력 -> t2_* 입력).
 //     실제 하드웨어 : 최상위에서 그대로 연결 (dma_display_top.v)
@@ -25,12 +26,19 @@
 // ---------------------------------------------------------------------------
 module dma_display_core #(
     parameter SCROLL       = 1,
-    parameter SRC_TICK_DIV = 550_000      // 33 MHz / 550000 = 60 소스 프레임/초
+    parameter SRC_TICK_DIV = 550_000,     // 33 MHz / 550000 = 60 소스 프레임/초
+    // 버퍼 크기: 400 이면 화면에 1/2 로 솎아서, 200 이면 1:1 로 표시 (화면 크기는 항상 200x200)
+    //   FPGA 의 Block RAM 이 작으면 200 / AW=16 으로 줄인다 (예: Spartan-6 LX45)
+    parameter W            = 400,
+    parameter H            = 400,
+    parameter AW           = 18           // ceil(log2(W*H))
 ) (
     input  wire        clk_src,
     input  wire        clk_tgt,
     input  wire        clk_pix,
     input  wire        rst,               // 비동기 리셋 (각 도메인에서 동기화)
+    input  wire        errmap_mode,       // 1: 스크롤 멈춤 + 타겟2 오류 누적 맵 표시 (비동기 입력, 스위치 등)
+                                          //    소스는 회색 무늬로 바뀌고 타겟2 DMA 는 쉬지 않고 반복한다
     // 영상 출력 (clk_pix)
     output wire [7:0]  r,
     output wire [7:0]  g,
@@ -40,19 +48,17 @@ module dma_display_core #(
     output wire        vsync,
     // 타겟2 직접 전송 버스: 소스 도메인 레지스터 출력 (clk_src)
     output wire        n2_valid,
-    output wire [17:0] n2_addr,
+    output wire [AW-1:0] n2_addr,
     output wire [7:0]  n2_data,
     // 타겟2 직접 전송 버스: 타겟 도메인 입력 (동기화기 없음!)
     input  wire        t2_valid,
-    input  wire [17:0] t2_addr,
+    input  wire [AW-1:0] t2_addr,
     input  wire [7:0]  t2_data,
     // 상태 (clk_tgt) : 타겟1 에 복사 완료된 프레임 수
     output wire [15:0] tgt_frames
 );
-    localparam W  = 400;
-    localparam H  = 400;
     localparam N  = W * H;
-    localparam AW = 18;
+    localparam SQ = W / 8;                // 8x8 체스판
     localparam FIFO_AW = 4;
 
     // ---- 도메인별 리셋 동기화 (비동기 assert, 동기 deassert) -----------------
@@ -85,6 +91,10 @@ module dma_display_core #(
     wire [FIFO_AW:0] fifo_level;
     wire          fifo_push;
     wire [8:0]    fifo_wdata;
+
+    reg [1:0] freeze_sr;                 // errmap_mode 를 소스 도메인으로 동기화
+    always @(posedge clk_src) freeze_sr <= {freeze_sr[0], errmap_mode};
+    wire freeze = freeze_sr[1];
 
     always @(posedge clk_src) begin
         if (rst_src) begin
@@ -122,16 +132,19 @@ module dma_display_core #(
                     state   <= S_COPY2;
                 end
                 S_COPY2: if (n_done) begin
-                    if (SCROLL)
-                        offset <= (offset == 2 * 50 - 1) ? 8'd0 : offset + 1'b1;
-                    state <= S_IDLE;
+                    if (SCROLL && !freeze)
+                        offset <= (offset == 2 * SQ - 1) ? 8'd0 : offset + 1'b1;
+                    if (freeze && !tick_pending)
+                        n_start <= 1'b1;         // 오류 맵 모드: 다음 틱까지 타겟2 DMA 반복 (버스가 늘 움직임)
+                    else
+                        state <= S_IDLE;
                 end
             endcase
         end
     end
 
-    checker_writer #(.W(W), .H(H), .SQ(50), .AW(AW)) u_writer (
-        .clk(clk_src), .rst(rst_src), .start(w_start), .offset(offset),
+    checker_writer #(.W(W), .H(H), .SQ(SQ), .AW(AW)) u_writer (
+        .clk(clk_src), .rst(rst_src), .start(w_start), .offset(offset), .pattern(freeze),
         .busy(w_busy), .done(w_done), .we(w_we), .addr(w_addr), .wdata(w_data)
     );
 
@@ -210,8 +223,8 @@ module dma_display_core #(
     // =======================================================================
     // 디스플레이 도메인 (25 MHz)
     // =======================================================================
-    tri_display #(.AW(AW)) u_disp (
-        .clk(clk_pix), .rst(rst_pix),
+    tri_display #(.BUF_W(W), .STEP(W / 200), .AW(AW)) u_disp (
+        .clk(clk_pix), .rst(rst_pix), .errmap(errmap_mode),
         .ram_addr(pix_addr), .src_rdata(src_rdata_b),
         .tgt1_rdata(tgt1_rdata_b), .tgt2_rdata(tgt2_rdata_b),
         .r(r), .g(g), .b(b), .de(de), .hsync(hsync), .vsync(vsync)

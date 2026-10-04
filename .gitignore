@@ -13,3 +13,8 @@ __pycache__/
 # 편집기 임시 파일
 *.swp
 *~
+
+# Verilator 추가 빌드 디렉터리, ISE 부산물
+obj_*/
+DebugErc.log
+*.xdl

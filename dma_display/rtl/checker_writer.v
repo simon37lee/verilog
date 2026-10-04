@@ -4,6 +4,8 @@
 //   start 펄스를 받으면 주소 0 부터 W*H-1 까지 한 클럭에 한 픽셀씩 쓴다.
 //   칸 크기 SQ 픽셀 (400 / 50 = 8x8 체스판), offset 만큼 대각선으로 밀린 패턴.
 //   곱셈/나눗셈 없이 칸 안 위치 카운터로 색을 정한다.
+//   pattern = 1 이면 체크보드 대신 픽셀마다 밝기가 바뀌는 회색 무늬 (x ^ y 의 하위 3비트)
+//     -> 이웃 픽셀 값이 거의 항상 달라서, 버스 값이 섞이거나 엉뚱한 주소에 써지면 눈에 띈다
 //   픽셀 형식: RGB332 (8비트)
 // ---------------------------------------------------------------------------
 module checker_writer #(
@@ -18,6 +20,7 @@ module checker_writer #(
     input  wire          rst,
     input  wire          start,
     input  wire [7:0]    offset,         // 0 ~ 2*SQ-1
+    input  wire          pattern,        // 0: 체크보드, 1: 회색 무늬
     output reg           busy,
     output reg           done,           // 1클럭 펄스
     output reg           we,
@@ -31,6 +34,7 @@ module checker_writer #(
     reg       xp0;
 
     wire [7:0] off_s = (offset >= SQ) ? offset - SQ : offset;
+    wire [2:0] gray  = x[2:0] ^ y[2:0];
     wire       off_p = (offset >= SQ);
 
     always @(posedge clk) begin
@@ -53,7 +57,8 @@ module checker_writer #(
                 // 현재 (x, y) 픽셀 쓰기
                 we    <= 1'b1;
                 addr  <= addr + 1'b1;
-                wdata <= (xp ^ yp) ? DARK : LIGHT;
+                wdata <= pattern ? {gray, gray, gray[2:1]}        // RGB332 회색 8단계
+                                 : (xp ^ yp) ? DARK : LIGHT;
 
                 // 다음 픽셀 위치
                 if (x == W - 1) begin
