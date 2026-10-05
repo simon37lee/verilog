@@ -1,0 +1,82 @@
+## ---------------------------------------------------------------------------
+## nes_atlys 제약 파일 (Digilent Atlys, XC6SLX45-CSG324-3)
+## 핀 번호는 Digilent Atlys 마스터 UCF 기준. 보드 리비전이 다르면 회로도로 확인할 것.
+## ---------------------------------------------------------------------------
+
+## 100 MHz 오실레이터
+NET "clk_100m" LOC = "L15" | IOSTANDARD = LVCMOS33;
+NET "clk_100m" TNM_NET = "TNM_clk100";
+TIMESPEC "TS_clk100" = PERIOD "TNM_clk100" 10 ns HIGH 50%;
+
+## RESET 버튼 (빨간 버튼). 매뉴얼과 달리 실제 보드에서는 평소 1 (M0 겸용 핀) -> active-low
+NET "btn_rst_n" LOC = "T15" | IOSTANDARD = LVCMOS33;
+NET "btn_rst_n" TIG;
+
+## 푸시 버튼 (active-high) -> NES 패드
+NET "btn_u" LOC = "N4" | IOSTANDARD = LVCMOS33;     # BTNU : A
+NET "btn_l" LOC = "P4" | IOSTANDARD = LVCMOS33;     # BTNL : 왼쪽
+NET "btn_d" LOC = "P3" | IOSTANDARD = LVCMOS33;     # BTND : B
+NET "btn_r" LOC = "F6" | IOSTANDARD = LVCMOS33;     # BTNR : 오른쪽
+NET "btn_c" LOC = "F5" | IOSTANDARD = LVCMOS33;     # BTNC : Start
+NET "btn_*" TIG;
+
+## SW0: 패드 모드 (내림 = 게임 모드 BTNU/BTND = A/B, 올림 = 방향키 모드 BTNU/BTND = 위/아래)
+NET "sw_mode" LOC = "A10" | IOSTANDARD = LVCMOS33;
+NET "sw_mode" TIG;
+
+## 슬라이드 스위치 SW5..SW7 -> 위 / 아래 / Select (방향키 모드에서는 SW5/SW6 = A/B)
+NET "sw<5>" LOC = "R5" | IOSTANDARD = LVCMOS33;
+NET "sw<6>" LOC = "T5" | IOSTANDARD = LVCMOS33;
+NET "sw<7>" LOC = "E4" | IOSTANDARD = LVCMOS33;
+NET "sw<*>" TIG;
+
+## SW1..SW4: 볼륨 {SW4..SW1} = 0 (최대 +12 dB) .. 14 (-30 dB), 15 = 음소거
+NET "sw_vol<1>" LOC = "D14" | IOSTANDARD = LVCMOS33;
+NET "sw_vol<2>" LOC = "C14" | IOSTANDARD = LVCMOS33;
+NET "sw_vol<3>" LOC = "P15" | IOSTANDARD = LVCMOS33;
+NET "sw_vol<4>" LOC = "P12" | IOSTANDARD = LVCMOS33;
+NET "sw_vol<*>" TIG;
+
+## AC97 코덱 (National LM4550). BIT_CLK 는 코덱이 만드는 12.288 MHz
+NET "ac97_bit_clk"   LOC = "L13" | IOSTANDARD = LVCMOS33;
+NET "ac97_sdata_in"  LOC = "T18" | IOSTANDARD = LVCMOS33;
+NET "ac97_sdata_out" LOC = "N16" | IOSTANDARD = LVCMOS33;
+NET "ac97_sync"      LOC = "U17" | IOSTANDARD = LVCMOS33;
+NET "ac97_reset_n"   LOC = "T17" | IOSTANDARD = LVCMOS33;
+NET "ac97_bit_clk" TNM_NET = "TNM_ac97";
+TIMESPEC "TS_ac97" = PERIOD "TNM_ac97" 81.38 ns HIGH 50%;
+NET "ac97_sdata_in" TIG;
+##   clk_nes <-> BIT_CLK: 샘플은 토글 핸드셰이크 (hold 는 읽는 동안 안 바뀜), RESET# 는 비동기 리셋
+NET "clk_nes_unbuf" TNM_NET = "TNM_nes";
+TIMESPEC "TS_nes_ac97" = FROM "TNM_nes" TO "TNM_ac97" TIG;
+TIMESPEC "TS_ac97_nes" = FROM "TNM_ac97" TO "TNM_nes" TIG;
+
+## USB-UART (J17, EXAR XR21V1410). 이름은 FPGA 입장: uart_rx = 호스트 -> FPGA
+NET "uart_rx" LOC = "A16" | IOSTANDARD = LVCMOS33;
+NET "uart_tx" LOC = "B16" | IOSTANDARD = LVCMOS33;
+NET "uart_rx" TIG;
+NET "uart_tx" TIG;
+
+## LED (상태 표시용, 타이밍 무시)
+NET "led<0>" LOC = "U18" | IOSTANDARD = LVCMOS33;
+NET "led<1>" LOC = "M14" | IOSTANDARD = LVCMOS33;
+NET "led<2>" LOC = "N14" | IOSTANDARD = LVCMOS33;
+NET "led<3>" LOC = "L14" | IOSTANDARD = LVCMOS33;
+NET "led<4>" LOC = "M13" | IOSTANDARD = LVCMOS33;
+NET "led<5>" LOC = "D4"  | IOSTANDARD = LVCMOS33;
+NET "led<6>" LOC = "P16" | IOSTANDARD = LVCMOS33;
+NET "led<7>" LOC = "N12" | IOSTANDARD = LVCMOS33;
+NET "led<*>" TIG;
+
+## HDMI OUT (J2 커넥터, Bank 0). IOSTANDARD 는 RTL 의 OBUFDS 에서 TMDS_33 으로 지정
+NET "hdmi_clk_p"  LOC = "B6";
+NET "hdmi_clk_n"  LOC = "A6";
+NET "hdmi_d_p<0>" LOC = "D8";
+NET "hdmi_d_n<0>" LOC = "C8";
+NET "hdmi_d_p<1>" LOC = "C7";
+NET "hdmi_d_n<1>" LOC = "A7";
+NET "hdmi_d_p<2>" LOC = "B8";
+NET "hdmi_d_n<2>" LOC = "A8";
+
+## PLL 출력 (125 / 25 / 100 MHz) 은 TS_clk100 에서 자동으로 파생되고 서로 동기 클럭으로 분석된다.
+##   clk_nes(100) -> clk_pix(25) 영상 경로는 가장 가까운 에지 간격 10 ns 로 검사된다.

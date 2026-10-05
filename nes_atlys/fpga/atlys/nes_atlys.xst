@@ -1,0 +1,13 @@
+set -tmpdir xst/tmp
+set -xsthdpdir xst
+run
+-ifn ../nes_atlys.prj
+-ifmt mixed
+-ofn nes_atlys
+-ofmt NGC
+-p xc6slx45-csg324-3
+-top nes_atlys
+-opt_mode Speed
+-opt_level 1
+-keep_hierarchy No
+-vlgincdir {"rom" "../../../rtl/fpga_nes/cmn/uart" "../../../rtl/fpga_nes/cmn/fifo"}

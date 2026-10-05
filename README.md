@@ -6,6 +6,7 @@ Verilog 디지털 로직 실습 프로젝트. 화면 출력은 실제 모니터 
 |---|---|
 | [`hdmi_checker/`](hdmi_checker) | 640x480 체크보드 + 0.1초마다 8방향으로 움직이는 빨간 공을 HDMI(TMDS)로 출력 |
 | [`dma_display/`](dma_display) | 400x400 소스 버퍼를 DMA 로 33 MHz → 22 MHz 도메인에 복사. 타겟1 은 async FIFO(올바른 CDC), 타겟2 는 CDC 없이 직접 전달(의도적인 노이즈). 640x480 화면을 3등분해 동시에 표시 |
+| [`nes_atlys/`](nes_atlys) | NES (패미컴) 를 Atlys 에서 HDMI 로 실행. [brianbennett/fpga_nes](https://github.com/brianbennett/fpga_nes) (Nexys3) 포팅, 맵퍼 0 게임 (슈퍼마리오 등) |
 | [`metastability/`](metastability) | 메타스테빌리티 측정 실험. 비동기 신호(링 오실레이터)를 샘플링한 FF 의 출력 시각을 carry chain TDC 로 재서 로그 히스토그램으로 표시, 동기 신호 대조군과 비교 |
 
 ## 필요한 도구
@@ -90,3 +91,43 @@ cd fpga/atlys && source ~/Xilinx/14.7/ISE_DS/settings64.sh && make && make prog
   위치를 바꾸면 `make taps` 로 탭 지연을 확인해서 `TAP_X10_A/B` 에 반영
 - 봉우리가 맨 왼쪽/오른쪽에 붙으면 `meta_lab_atlys.v` 의 `SAMPLE_PHASE` 를 줄이거나/늘려서 다시 빌드
 
+
+## nes_atlys
+[brianbennett/fpga_nes](https://github.com/brianbennett/fpga_nes) (BSD, 커밋 26085d6) 를 Atlys + HDMI 로 옮긴 것.
+6502 CPU / PPU / APU 는 원본 그대로이고, 맵퍼 0 (NROM: PRG 16/32KB + CHR 8KB) 만 지원한다.
+슈퍼마리오 1, Excitebike, Donkey Kong, Balloon Fight, Ice Climber 같은 게임이 여기에 해당한다. 게임 ROM 은 직접 준비해야 한다.
+
+```bash
+# 가상 모니터 (Verilator + SDL2). 실시간의 약 3% (1.7 fps) 라 느리다
+cd nes_atlys/sim/verilator
+make run ROM=~/roms/smb.nes   # ROM 생략 시 roms/test/nestest.nes
+make test                     # 창 없이 nestest 실행 -> obj_dir/test.bmp (CPU 명령어 테스트가 모두 OK 여야 함)
+make uart-test                # 빈 ROM 으로 부팅 -> UART 로더로 ROM 교체 -> obj_blank/uart.bmp
+
+# Atlys
+cd nes_atlys/fpga/atlys       # ISE 환경은 Makefile 이 알아서 불러옴 (ISE_DIR=~/Xilinx/14.7/ISE_DS)
+make ROM=~/roms/smb.nes       # ROM 을 BRAM 에 넣은 비트스트림
+make prog                     # 다운로드하면 바로 게임 시작 (HDMI OUT J2)
+make load ROM=다른게임.nes    # 실행 중에 USB-UART (J17, 115200 8O1) 로 ROM 교체 (PORT=/dev/ttyUSB0)
+```
+- 가상 모니터 키: 방향키, X = A, Z = B, Enter = Start, 오른쪽 Shift = Select, F1 = 콘솔 리셋, P = 일시정지, S = 화면 저장
+
+| Atlys | NES |
+|---|---|
+| BTNU / BTND | SW0 내림 (게임 모드): A (점프) / B (대시, 파이어볼) · SW0 올림 (방향키 모드): 위 / 아래 |
+| BTNL / BTNR | 왼쪽 / 오른쪽 |
+| BTNC | Start |
+| SW5 / SW6 (올리면 누름) | 게임 모드: 위 / 아래 (파이프) · 방향키 모드: A / B |
+| SW7 | Select |
+| RESET (T15) | 전체 리셋 (BRAM 의 ROM 으로 다시 시작) |
+
+- LED: 0 = PLL lock, 1 = RESET 눌림, 2 = 100 MHz 클럭 깜빡임, 3 = vsync (약 1 Hz), 4 = UART 수신, 5 = 패드 버튼 눌림, 6 = AC97 코덱 준비, 7 = 소리
+- 구조: `rtl/nes_atlys_core.v` 가 보드와 무관한 래퍼 (부트 리셋 펄스, 버튼으로 패드 4021 흉내, RGB332 -> 888).
+  `fpga/atlys/nes_atlys.v` 는 PLL (100 / 25 / 125 MHz, 모두 같은 PLL) + TMDS 출력
+- 원본에서 바꾼 곳은 `rtl/fpga_nes/` 안에 `[nes_atlys]` 주석으로 표시:
+  PPU 의 DE 출력 (sync 와 1 클럭 정렬), 카트 BRAM 의 `$readmemh` 초기화, hci 의 보드레이트 / 시작 상태 / 카트 설정 기본값 파라미터
+- 원본 CPU 는 rst 로 리셋 벡터를 읽지 않으므로 (원래는 PC 를 로더가 써 줌), 리셋 직후 /RES 를 잠깐 내려 `$FFFC` 부터 시작하게 한다
+- 소리: APU 4채널 믹스 (펄스 2, 삼각파, 노이즈 - 원본에 DMC 없음) -> DC 차단 필터 -> AC97 코덱 (LM4550) 48 kHz.
+  Atlys 의 HP OUT / LINE OUT 단자에 이어폰이나 스피커.
+  볼륨 = {SW4,SW3,SW2,SW1} 4 비트: 모두 내림 (0) = 최대 +12 dB, 1 늘 때마다 -3 dB, 모두 올림 (15) = 음소거.
+  LED 6 = 코덱 준비, LED 7 = 소리 나는 중. 컨트롤러 `rtl/ac97_out.v`, 테스트 `iverilog -g2005 -o tb_ac97.vvp sim/tb_ac97.v rtl/ac97_out.v && vvp tb_ac97.vvp`
