@@ -1,0 +1,84 @@
+# mandelbrot
+
+Mandelbrot 집합 실시간 렌더러. 320x240 프레임버퍼를 640x480 HDMI 로 2 배 확대해서 보여 주고,
+왼쪽 위에 프레임 하나를 그리는 데 걸린 시간과 fps 를 표시한다. 코어 구조를 단계별로 바꿔 가며 이 숫자를 줄이는 것이 목표.
+
+기본은 **자동 데모**: 렌더 프레임마다 Seahorse Valley (-0.7436, 0.1318) 쪽으로 중심을 당기며 1/32 씩 확대하고,
+32 배에 닿으면 처음 화면으로 축소하기를 반복한다. 움직임이 렌더 프레임 단위라서 코어가 빨라질수록
+애니메이션이 빠르고 부드러워진다. 더블 버퍼 (버퍼 2 개, vsync 에 교체) 라서 화면이 찢어지지 않는다.
+
+```
+ clk_core (50 MHz)                                          clk_pix (25 MHz)
+ 버튼 ─► mandel_render ─► mandel_core ─► 프레임버퍼 BRAM ─► mandel_display ─► TMDS ─► HDMI
+         (보기 영역,       (z = z² + c)   320x240x8 bit x2   (2배 확대, 팔레트,
+          픽셀 스케줄러,                                       렌더 시간 / fps)
+          렌더 시간)  ── 토글 핸드셰이크 ──────────────────────►
+```
+
+## 버전 관리
+버전마다 바뀌는 것은 **엔진** (픽셀 스케줄러 + 코어) 뿐이고 나머지는 공통이다. `V=` 로 골라서 빌드한다.
+
+```
+rtl/common/   mandel_render (보기 영역, 자동 데모, 렌더 시간, 버퍼 교체), mandel_display, mandel_system,
+              palette_rom, video_timing, dpram, tmds_*
+rtl/vN/       mandel_engine.v (+ 코어 등) 와 config.mk (CORE_DIV, W)
+```
+- 엔진 인터페이스 (모든 버전 공통): `start` 펄스에 `x0 / top / step / max_iter` 를 받아 프레임 하나를 계산하고,
+  `fb_we / fb_addr (픽셀 번호) / fb_data` 로 결과를 쓴 뒤 `done` 펄스. 쓰는 순서는 버전마다 달라도 된다
+- 빌드 결과도 버전마다 따로: `sim/verilator/obj_vN/`, `fpga/atlys/build/vN/`
+- 화면 둘째 줄 왼쪽에 버전 (`v1`) 이 표시된다
+- 버전이 완성되면 git 태그 `mandel-vN`
+- 새 버전 추가: `cp -r rtl/v1 rtl/v2` 후 `rtl/v2/` 만 고치고 `config.mk` 의 CORE_DIV 를 맞춘다
+
+## 실행
+```bash
+cd sim/verilator
+make run            # V=1 가상 모니터 (M 자동/수동, B 더블/단일 버퍼, 수동: 화살표 이동 Z 확대 X 축소, 1~4 max_iter)
+make V=2 run        # 다른 버전
+make check          # 첫 프레임을 C++ 고정소수점 모델과 비트 단위 비교 + 렌더 시간 / 반복 속도 보고
+make check-all      # 모든 버전 검사 + 결과 요약 (RESULT 줄)
+make W=24 check     # 비트 폭을 바꿔 검사 (RTL 파라미터와 모델 둘 다, obj_v1_w24/ 에 빌드)
+
+cd fpga/atlys
+source ~/Xilinx/14.7/ISE_DS/settings64.sh
+make V=1 && make V=1 timing && make V=1 util && make V=1 prog
+```
+
+| 보드 입력 | 동작 |
+|---|---|
+| SW7 | 아래 = 자동 데모, 위 = 버튼 조작 |
+| SW6 | 아래 = 더블 버퍼, 위 = 단일 버퍼 (그리는 과정이 그대로 보임) |
+| BTNL / BTNR / BTNU / BTND | 4 픽셀씩 이동 (렌더 프레임마다 한 번) |
+| BTNC | 1/16 확대 (SW0 올리면 축소) |
+| {SW2, SW1} | max_iter: 0 = 255, 1 = 127, 2 = 63, 3 = 31 |
+| RESET (T15) | 처음 보기 영역으로 (active-low) |
+
+LED: 0 PLL lock, 1 RESET, 2/3 core/pix 클럭 깜빡임, 4 vsync, 5 렌더 프레임, 6 코어 busy
+
+## 파일
+- `rtl/v1/mandel_engine.v`, `mandel_core.v` : v1 엔진 (픽셀 하나씩, 반복 1 회 / 클럭 조합 회로 코어)
+- `rtl/common/mandel_render.v` : 보기 영역 (자동 데모 / 버튼), 엔진 구동, 버퍼 교체 요청, 렌더 시간 (10 us 단위 BCD)
+- `rtl/common/mandel_display.v` : 2 배 확대, 팔레트, 5x7 글꼴로 렌더 시간 / 버전 / fps 표시
+- `rtl/common/mandel_system.v` : 두 클럭 도메인 연결 (프레임버퍼 2 개, 버퍼 교체 / 렌더 시간 토글 핸드셰이크, 리셋 동기화)
+- `rtl/common/palette_rom.v` : `tools/gen_palette.py` 가 생성
+- `rtl/common/video_timing.v`, `dpram.v`, `tmds_*.v` : `dma_display` 에서 복사
+
+## 고정소수점
+- 코어: W = 18 비트 Q4.14 (범위 [-8, 8), 간격 2^-14). Spartan-6 DSP48A1 이 18x18 이라 곱셈 하나에 DSP 하나
+- 곱셈 결과 (2W 비트) 로 탈출 판정 `zr² + zi² > 4` -> 판정에는 오버플로가 없다
+- 좌표는 8 비트 더 정밀하게 (26 비트) 누적하고 코어에 넘길 때 버린다
+- W = 18 이면 처음 화면 기준 약 170 배 확대부터 픽셀이 뭉개진다 (픽셀 간격 < 2^-14)
+
+## 단계별 기록 (max_iter 255)
+기본 화면 = 처음 보기 영역 (`make check`, 평균 46.5 반복/픽셀). 데모 = 자동 데모에서 32 배 근처 (검은 안쪽이 많아 가장 느린 구간)
+
+| 단계 | 구조 | clk_core | 기본 화면 | 데모 최저 | 반복/초 | DSP | 비고 |
+|---|---|---|---|---|---|---|---|
+| v1 | 코어 1 개, 반복 1 회 / 클럭 (조합 회로), 픽셀 1 개씩 | 50 MHz | 77.6 ms (13 fps) | 333 ms (3 fps) | 46 M | 3 | 최소 주기 11.1 ns, 픽셀당 오버헤드 4 클럭 |
+
+## 다음 단계 아이디어
+- **v2 파이프라인 + 인터리브**: 곱셈기 앞뒤에 레지스터를 넣어 클럭을 올린다. 그런데 픽셀 하나만 계산하면
+  반복 1 회가 L 클럭이 되어 오히려 느려진다 -> 파이프라인 단계마다 다른 픽셀을 넣어 (L 개 동시 계산) 매 클럭 반복 1 회
+- **v3 다중 코어**: 코어 N 개 + 픽셀 분배 / 결과 수집 스케줄러. DSP 58 개 중 코어당 3 개
+- **v4**: 비트 폭 늘리기 (W = 25~36, 곱셈당 DSP 4 개) 로 깊은 확대 (W = 18 은 32 배 근처부터 경계에 반복 오차 잡음이 보임), 반복 횟수 16 비트
+- 더블 버퍼는 vsync 에 교체하므로 렌더가 아무리 빨라도 화면은 최대 60 fps. 그 위로는 렌더 시간 (ms) 으로 비교

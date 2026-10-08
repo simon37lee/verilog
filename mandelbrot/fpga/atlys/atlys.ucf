@@ -1,0 +1,62 @@
+## ---------------------------------------------------------------------------
+## mandel_atlys 제약 파일 (Digilent Atlys, XC6SLX45-CSG324-3)
+## 핀 번호는 Digilent Atlys 마스터 UCF 기준
+## ---------------------------------------------------------------------------
+
+## 100 MHz 오실레이터
+NET "clk_100m" LOC = "L15" | IOSTANDARD = LVCMOS33;
+NET "clk_100m" TNM_NET = "TNM_clk100";
+TIMESPEC "TS_clk100" = PERIOD "TNM_clk100" 10 ns HIGH 50%;
+
+## RESET 버튼 (빨간 버튼). 매뉴얼과 달리 실제 보드에서는 평소 1 (M0 겸용 핀) -> active-low
+NET "btn_rst_n" LOC = "T15" | IOSTANDARD = LVCMOS33;
+NET "btn_rst_n" TIG;
+
+## 버튼 (누르면 1)
+NET "btn_u" LOC = "N4" | IOSTANDARD = LVCMOS33;     # BTNU : 위로 이동
+NET "btn_l" LOC = "P4" | IOSTANDARD = LVCMOS33;     # BTNL : 왼쪽
+NET "btn_d" LOC = "P3" | IOSTANDARD = LVCMOS33;     # BTND : 아래
+NET "btn_r" LOC = "F6" | IOSTANDARD = LVCMOS33;     # BTNR : 오른쪽
+NET "btn_c" LOC = "F5" | IOSTANDARD = LVCMOS33;     # BTNC : 확대 / 축소
+NET "btn_*" TIG;
+
+## SW0: BTNC 방향 (위 = 축소),  {SW2, SW1}: max_iter 255 / 127 / 63 / 31
+NET "sw_zoom_out" LOC = "A10" | IOSTANDARD = LVCMOS33;
+NET "sw_iter<0>"  LOC = "D14" | IOSTANDARD = LVCMOS33;    # SW1
+NET "sw_iter<1>"  LOC = "C14" | IOSTANDARD = LVCMOS33;    # SW2
+## SW6: 단일 버퍼 (위 = 그리는 과정이 보임),  SW7: 버튼 조작 (아래 = 자동 데모)
+NET "sw_single"   LOC = "T5"  | IOSTANDARD = LVCMOS33;    # SW6
+NET "sw_manual"   LOC = "E4"  | IOSTANDARD = LVCMOS33;    # SW7
+NET "sw_*" TIG;
+
+## LED (상태 표시용, 타이밍 무시)
+NET "led<0>" LOC = "U18" | IOSTANDARD = LVCMOS33;
+NET "led<1>" LOC = "M14" | IOSTANDARD = LVCMOS33;
+NET "led<2>" LOC = "N14" | IOSTANDARD = LVCMOS33;
+NET "led<3>" LOC = "L14" | IOSTANDARD = LVCMOS33;
+NET "led<4>" LOC = "M13" | IOSTANDARD = LVCMOS33;
+NET "led<5>" LOC = "D4"  | IOSTANDARD = LVCMOS33;
+NET "led<6>" LOC = "P16" | IOSTANDARD = LVCMOS33;
+NET "led<7>" LOC = "N12" | IOSTANDARD = LVCMOS33;
+NET "led<*>" TIG;
+
+## HDMI OUT (J2 커넥터, Bank 0). IOSTANDARD 는 RTL 의 OBUFDS 에서 TMDS_33 으로 지정
+NET "hdmi_clk_p"  LOC = "B6";
+NET "hdmi_clk_n"  LOC = "A6";
+NET "hdmi_d_p<0>" LOC = "D8";
+NET "hdmi_d_n<0>" LOC = "C8";
+NET "hdmi_d_p<1>" LOC = "C7";
+NET "hdmi_d_n<1>" LOC = "A7";
+NET "hdmi_d_p<2>" LOC = "B8";
+NET "hdmi_d_n<2>" LOC = "A8";
+
+## ---------------------------------------------------------------------------
+## clk_core <-> clk_pix
+##   같은 PLL 에서 나오지만 설계상 비동기로 취급한다 (나중에 clk_core 주파수를 바꿔도 그대로 쓰도록).
+##   건너는 신호는 모두 동기화되어 있다: 렌더 시간 / 버퍼 교체 = 토글 핸드셰이크, 리셋 = 도메인별 동기화,
+##   프레임버퍼 = 듀얼 클럭 Block RAM (포트별로 자기 클럭).
+## ---------------------------------------------------------------------------
+NET "clk_core" TNM_NET = "TNM_core";
+NET "clk_pix"  TNM_NET = "TNM_pix";
+TIMESPEC "TS_core_pix" = FROM "TNM_core" TO "TNM_pix" TIG;
+TIMESPEC "TS_pix_core" = FROM "TNM_pix" TO "TNM_core" TIG;

@@ -4,6 +4,7 @@ obj_dir/
 obj_check/
 *.vvp
 *.vcd
+check_*.log
 __pycache__/
 
 # 시뮬레이션 캡처 이미지

@@ -8,6 +8,7 @@ Verilog 디지털 로직 실습 프로젝트. 화면 출력은 실제 모니터 
 | [`dma_display/`](dma_display) | 400x400 소스 버퍼를 DMA 로 33 MHz → 22 MHz 도메인에 복사. 타겟1 은 async FIFO(올바른 CDC), 타겟2 는 CDC 없이 직접 전달(의도적인 노이즈). 640x480 화면을 3등분해 동시에 표시 |
 | [`nes_atlys/`](nes_atlys) | NES (패미컴) 를 Atlys 에서 HDMI 로 실행. [brianbennett/fpga_nes](https://github.com/brianbennett/fpga_nes) (Nexys3) 포팅, 맵퍼 0 게임 (슈퍼마리오 등) |
 | [`metastability/`](metastability) | 메타스테빌리티 측정 실험. 비동기 신호(링 오실레이터)를 샘플링한 FF 의 출력 시각을 carry chain TDC 로 재서 로그 히스토그램으로 표시, 동기 신호 대조군과 비교 |
+| [`mandelbrot/`](mandelbrot) | Mandelbrot 실시간 렌더러 (320x240 -> 640x480 HDMI). 렌더 시간을 화면에 표시하고, 코어를 단계별로 파이프라인화 / 병렬화하며 성능을 올린다 |
 
 ## 필요한 도구
 - Icarus Verilog (`iverilog`, `vvp`) — 테스트벤치
