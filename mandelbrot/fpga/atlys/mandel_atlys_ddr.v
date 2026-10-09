@@ -17,6 +17,7 @@
 //   DDR2 보정 문제 점검용 빌드 (DEFS=...):
 //     DDRONLY : Mandelbrot 쪽 (계산, 화면) 을 빼고 MIG + 두 번째 PLL + LED 만
 //     RSTBTN  : MIG 리셋 입력을 RESET 버튼 (active-low) 에 연결 (MIG 예제 설계와 같게)
+//     PLLWAIT : 두 번째 PLL 을 DDR2 보정이 끝날 때까지 멈춰 둔다 (보정 중에는 MIG 클럭만 돈다)
 //
 //   LED: [0] PLL lock  [1] RESET 버튼  [2]/[3] core/pix 클럭 깜빡임  [4] vsync  [5] 렌더 프레임
 //        [6] MCB 클럭 버퍼 (BUFPLL_MCB) 잠금  [7] DDR2 보정 완료 (calib_done)
@@ -63,6 +64,7 @@ module mandel_atlys #(
 
     // ---- 클럭 생성 (MIG 뒤의 두 번째 PLL) ------------------------------------------
     wire c3_clk0, c3_rst0;                  // MIG 사용자 클럭 100 MHz (BUFG), 그 리셋
+    wire calib_done;                        // DDR2 보정 완료 (MIG)
     wire clkfb, pll_locked;
     wire clk_x5_unbuf, clk_pix_unbuf, clk_core_unbuf;
 
@@ -86,7 +88,11 @@ module mandel_atlys #(
         .CLKOUT4  (),
         .CLKOUT5  (),
         .LOCKED   (pll_locked),
+`ifdef PLLWAIT
+        .RST      (c3_rst0 || !calib_done)
+`else
         .RST      (c3_rst0)
+`endif
     );
 
     wire clk_x5, clk_pix, clk_core;
@@ -95,7 +101,6 @@ module mandel_atlys #(
     BUFG u_bufg_core (.I(clk_core_unbuf), .O(clk_core));
 
     // ---- DDR2 컨트롤러 (MIG) ----------------------------------------------------
-    wire        calib_done;
 
     // DDR2 보정이 끝날 때까지 나머지 (계산, 화면, TMDS) 는 모두 리셋으로 붙잡아 둔다.
     // MIG 예제 설계는 보정 중에 DDR2 쪽만 움직이는데, v5 는 처음에 계산 링 (DSP 54 개) 과 TMDS 200 MHz 가 같이
