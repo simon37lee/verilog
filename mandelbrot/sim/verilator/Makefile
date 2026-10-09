@@ -38,12 +38,12 @@ OPT = OPT_FAST="-O3 -march=native" OPT_GLOBAL="-O3 -march=native"
 
 all: $(BIN)
 
-$(BIN): $(RTL) $(RTL_DIR)/v$(V)/config.mk vmon_mandel.cpp Makefile
+$(BIN): $(RTL) $(RTL_DIR)/v$(V)/config.mk vmon_mandel.cpp ../model/mandel_model.h Makefile
 	$(VERILATOR) --cc --exe -O3 --x-assign fast --x-initial fast \
 	    -Wno-fatal -Wno-WIDTH \
 	    --top-module mandel_system -GW=$(W) -GIW=$(IW) -GCORE_HZ=$(CORE_HZ) -GVERSION=$(V) $(addprefix -D,$(DEFS)) \
 	    --clk clk_pix --clk clk_core \
-	    -CFLAGS "-std=c++14 -DMANDEL_W=$(W) -DMANDEL_IW=$(IW) -DMANDEL_VERSION=$(V) -DMANDEL_CORE_DIV=$(CORE_DIV) $(shell $(SDL2_CONFIG) --cflags)" \
+	    -CFLAGS "-std=c++14 -I$(abspath ../model) -DMANDEL_W=$(W) -DMANDEL_IW=$(IW) -DMANDEL_VERSION=$(V) -DMANDEL_CORE_DIV=$(CORE_DIV) $(shell $(SDL2_CONFIG) --cflags)" \
 	    -LDFLAGS "$(shell $(SDL2_CONFIG) --libs)" \
 	    --Mdir $(MDIR) $(RTL) vmon_mandel.cpp
 	$(MAKE) -C $(MDIR) -f Vmandel_system.mk -j $(OPT)

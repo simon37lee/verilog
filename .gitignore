@@ -26,3 +26,4 @@ nes_ref/
 # 게임 ROM 은 커밋하지 않는다 (공개 테스트 ROM 만 예외)
 *.nes
 !nes_atlys/roms/test/*.nes
+mandelbrot/sim/model/obj/

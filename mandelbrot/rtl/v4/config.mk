@@ -8,3 +8,6 @@
 CORE_DIV ?= 7
 W        ?= 34
 IW       ?= 10
+
+# PAR : 클럭당 반복 수 (이론값, sim/model 뷰어가 FPGA 렌더 시간을 어림할 때 쓴다)
+PAR      ?= 6

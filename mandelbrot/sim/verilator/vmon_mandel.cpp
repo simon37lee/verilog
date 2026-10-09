@@ -38,6 +38,7 @@
 
 #include "Vmandel_system.h"
 #include "verilated.h"
+#include "mandel_model.h"
 
 // 빌드할 때 Makefile 이 rtl/vN/config.mk 값으로 넘겨 준다
 #ifndef MANDEL_W
@@ -61,40 +62,13 @@ constexpr double PIX_HZ = 25e6;
 constexpr double REFRESH_HZ = PIX_HZ / (800.0 * 525.0);
 constexpr int    FB_W = 320, FB_H = 240;
 
-// ---- 고정소수점 기준 모델 (mandel_core / mandel_render 와 같은 연산) ----------
+// ---- 고정소수점 기준 모델: ../model/mandel_model.h (실시간 뷰어와 같이 쓴다) ---------
 struct Model {
-    static constexpr int W = MANDEL_W, FRAC = W - 4, CW = W + 8, CFRAC = FRAC + 8;
-
-    static int64_t wrap(__int128 v, int bits) {     // 아래 bits 비트를 부호 확장
-        const unsigned __int128 m = ((unsigned __int128)1 << bits) - 1;
-        unsigned __int128 u = (unsigned __int128)v & m;
-        if (u >> (bits - 1)) u |= ~m;
-        return (int64_t)(__int128)u;
-    }
-    static int iterate(int64_t cr, int64_t ci, int max_iter) {
-        int64_t zr = 0, zi = 0;
-        const __int128 four = (__int128)4 << (2 * FRAC);
-        for (int n = 0;; n++) {
-            __int128 zr2 = (__int128)zr * zr, zi2 = (__int128)zi * zi, zri = (__int128)zr * zi;
-            if (zr2 + zi2 > four || n == max_iter) return n;
-            int64_t nr = wrap(wrap((zr2 - zi2) >> FRAC, W) + cr, W);
-            int64_t ni = wrap(wrap(zri >> (FRAC - 1), W) + ci, W);
-            zr = nr;
-            zi = ni;
-        }
-    }
-    // 리셋 직후 기본 보기 영역에서 (px, py) 의 반복 횟수 (프레임버퍼에 쓰는 값)
-    // 반복 횟수 -> 프레임버퍼 8 비트 (mandel_render 와 같게: 안쪽 0, 아래 8 비트가 0 이면 같은 색인 64)
-    static int fold(int n) { return (n != 0 && (n & 255) == 0) ? 64 : (n & 255); }
+    static int fold(int n) { return mandel::fold(n); }
+    // 리셋 직후 기본 보기 영역에서 (px, py) 의 반복 횟수 (안쪽 = 0)
     static int pixel(int px, int py, int max_iter) {
-        const int64_t step   = wrap(((__int128)7 << CFRAC) / 640, CW);
-        const int64_t cen_re = -((int64_t)1 << (CFRAC - 1)), cen_im = 0;
-        const int64_t x0  = wrap(cen_re - 160 * (__int128)step, CW);
-        const int64_t top = wrap(cen_im + 120 * (__int128)step, CW);
-        int64_t cr = wrap(x0 + (__int128)px * step, CW) >> 8;
-        int64_t ci = wrap(top - (__int128)py * step, CW) >> 8;
-        int n = iterate(cr, ci, max_iter);
-        return n == max_iter ? 0 : n;
+        const mandel::View v;
+        return mandel::pixel(v.x0(), v.top(), v.step, px, py, max_iter);
     }
 };
 

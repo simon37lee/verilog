@@ -41,6 +41,10 @@ make W=24 check     # 비트 폭을 바꿔 검사 (RTL 파라미터와 모델 �
 make V=4 CORE_DIV=6 check   # clk_core 를 바꿔 검사 (obj_v4_div6/ 에 빌드, 렌더 시간이 그 클럭 기준)
 make V=4 check CHECK_ARGS="--sw-iter 0"   # 검사는 기본 max_iter 255 (버전끼리 비교용). v4 의 1023 로 검사
 
+cd sim/model        # C++ 모델만 실시간으로 (RTL 시뮬레이션 없이, CPU 멀티스레드)
+make run            # V=4. FPGA 와 프레임마다 같은 그림을 FPGA 이론 속도에 맞춰 보여 준다 (P 로 속도 맞춤 끄기)
+make V=1 run        # 다른 버전 (W / IW / CORE_DIV / PAR 은 rtl/vN/config.mk)
+
 cd fpga/atlys
 source ~/Xilinx/14.7/ISE_DS/settings64.sh
 make V=1 && make V=1 timing && make V=1 util && make V=1 prog
@@ -58,6 +62,17 @@ make V=4 CORE_DIV=6 prog   # clk_core 를 바꿔서 빌드 (build/v4_div6/ 에 �
 
 LED: 0 PLL lock, 1 RESET, 2/3 core/pix 클럭 깜빡임, 4 vsync, 5 렌더 프레임, 6 코어 busy
 
+### Verilator 시뮬레이션과 C++ 모델 뷰어
+- `sim/verilator` (`make run`) 는 RTL 을 클럭마다 계산해서 정확하지만 느리다 (v4 는 실시간의 약 2 %).
+  검사 (`make check`) 와 렌더 시간 측정은 이쪽
+- `sim/model` (`make run`) 은 같은 고정소수점 모델 (`sim/model/mandel_model.h`, 검사도 이 파일을 쓴다) 로 픽셀 값만
+  계산한다. 보기 영역도 `mandel_render` 와 같은 순서로 갱신하므로 FPGA 와 같은 프레임이 나온다
+  (v4 데모 411 번째 프레임이 RTL 시뮬레이션 화면과 픽셀 단위로 같음). 12 스레드에서 v4 의 가장 깊은 프레임이 약 16 ms
+- 창 제목의 `FPGA ~ms` 는 이론값 max(반복 수 / PAR, 76800) 클럭 @ CORE_HZ (PAR = 링 수). 실제는 조금 더 걸린다
+  (기본 화면에서 v3 +15 %, v4 +6 %, v1 은 픽셀당 4 클럭이 더 들어서 +9 %). 기본은 이 시간에 맞춰 프레임을 넘기므로
+  애니메이션 속도가 보드와 비슷하다
+- 보드의 전원 / 신호 문제 (v4 @ 166.7 MHz) 같은 것은 두 시뮬레이션 모두 보여 주지 못한다
+
 ## 파일
 - `rtl/v1/mandel_engine.v`, `mandel_core.v` : v1 엔진 (픽셀 하나씩, 반복 1 회 / 클럭 조합 회로 코어)
 - `rtl/v2/mandel_engine.v`, `mandel_ring.v` : v2 엔진 (픽셀 생성기 + 4 단 파이프라인 링, 픽셀 4 개 인터리브)
@@ -68,6 +83,7 @@ LED: 0 PLL lock, 1 RESET, 2/3 core/pix 클럭 깜빡임, 4 vsync, 5 렌더 프�
 - `rtl/common/mandel_system.v` : 두 클럭 도메인 연결 (프레임버퍼 2 개, 버퍼 교체 / 렌더 시간 토글 핸드셰이크, 리셋 동기화)
 - `rtl/common/palette_rom.v` : `tools/gen_palette.py` 가 생성
 - `rtl/common/video_timing.v`, `dpram.v`, `tmds_*.v` : `dma_display` 에서 복사
+- `sim/model/mandel_model.h` : C++ 기준 모델 (반복, 좌표, 보기 영역 갱신). `model_view.cpp` : 실시간 뷰어
 
 ## 고정소수점
 - 코어: W = 18 비트 Q4.14 (범위 [-8, 8), 간격 2^-14). Spartan-6 DSP48A1 이 18x18 이라 곱셈 하나에 DSP 하나
