@@ -19,6 +19,7 @@
 module mandel_atlys #(
     // Makefile 이 rtl/vN/config.mk 값을 XST -generics 로 넘긴다
     parameter W        = 18,
+    parameter IW       = 8,                 // 반복 횟수 비트 수
     parameter CORE_DIV = 20,                // clk_core = 1000 MHz / CORE_DIV
     parameter VERSION  = 1                  // 화면 표시용 엔진 버전
 ) (
@@ -82,7 +83,7 @@ module mandel_atlys #(
     wire [15:0] frames;
     wire        busy;
 
-    mandel_system #(.W(W), .CORE_HZ(CORE_HZ), .VERSION(VERSION)) u_sys (
+    mandel_system #(.W(W), .IW(IW), .CORE_HZ(CORE_HZ), .VERSION(VERSION)) u_sys (
         .clk_core(clk_core), .clk_pix(clk_pix),
         .rst(!btn_rst_n || !pll_locked),
         .btn_l(btn_l), .btn_r(btn_r), .btn_u(btn_u), .btn_d(btn_d), .btn_c(btn_c),

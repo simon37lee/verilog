@@ -12,12 +12,22 @@
 //
 //   보기 영역 갱신 (프레임마다 한 번 -> 렌더가 빠를수록 움직임도 빨라진다)
 //     자동 데모 : 확대 1/32 씩 하면서 중심을 목표점 (Seahorse Valley) 으로 1/16 씩 당긴다.
-//                 32 배에 닿으면 처음 화면 쪽으로 같은 방식으로 축소, 다시 반복
+//                 2^ZOOM_LOG 배에 닿으면 중심은 그대로 두고 처음 배율까지 축소, 다시 반복
+//                 (리셋 뒤 첫 확대만 처음 화면에서 출발. 축소하면서 처음 중심으로 돌아가게 하면
+//                  깊은 확대에서는 첫 프레임에 화면 수천 개 거리를 튀거나, 천천히 가면 가는 길에
+//                  메인 카디오이드 안쪽 (전부 검정, 모든 픽셀이 max_iter) 을 지나간다)
+//                   W = 18 : 32 배. 픽셀 간격이 코어 LSB 약 5.6 개라서 정밀도 한계가 보이는 곳
+//                   W > 18 : 2^(W-15) 배 (W = 34 면 52 만 배, 픽셀 간격 LSB 약 22 개).
+//                            그보다 깊으면 목표점 근처가 작은 만델브로 안쪽이라 반복 1023 으로도 거의 검다
 //     수동      : btn_l/r/u/d 4 픽셀씩 이동,  btn_c 확대 (zoom_out = 1 이면 축소), 1/16 씩
 //
 //   버퍼: 프레임버퍼 주소 = 버퍼 번호 * FB_W*FB_H + 픽셀 번호
 //     더블 버퍼 : wr_buf 에 그리고, 끝나면 swap_req 토글 -> swap_ack 가 따라오면 wr_buf 반전
 //     단일 버퍼 : 기다리지 않고 같은 버퍼에 계속 그린다 (화면에 그리는 과정이 보임)
+//
+//   반복 횟수: 엔진은 IW 비트 (최대 2^IW - 1) 로 세고, 프레임버퍼에는 8 비트로 접어서 쓴다.
+//     팔레트가 주기 64 라서 아래 8 비트만 써도 색은 같다. 단 바깥 점인데 아래 8 비트가 0 이면
+//     (256, 512, ...) 안쪽 (검정) 과 겹치므로 같은 색인 64 로 바꾼다.
 //
 //   렌더 시간: 엔진 start ~ done, 10 us 단위 BCD 6 자리 (0000.00 ~ 9999.99 ms). 교체 대기는 빠진다.
 // ---------------------------------------------------------------------------
@@ -41,7 +51,7 @@ module mandel_render #(
     // 프레임버퍼 쓰기 포트
     output reg           fb_we,
     output reg  [AW-1:0] fb_addr,
-    output reg  [IW-1:0] fb_data,
+    output reg  [7:0]    fb_data,
     // 버퍼 교체 핸드셰이크 (swap_ack 는 이미 clk 도메인으로 동기화된 것)
     output reg           wr_buf,        // 지금 그리는 버퍼
     output reg           swap_req,      // 토글: wr_buf 를 화면에 보여 달라
@@ -61,13 +71,15 @@ module mandel_render #(
     localparam [CW-1:0] STEP0 = (SEVEN << CFRAC) / 640;
     localparam [CW-1:0] HALF  = {{(CW-1){1'b0}}, 1'b1} << (CFRAC - 1);
     localparam [CW-1:0] STEP_MAX = STEP0 << 2;       // 수동 축소 한계 (가로 14)
-    localparam [CW-1:0] STEP_MIN = STEP0 >> 5;       // 자동 데모 확대 한계 (32 배)
+    localparam          ZOOM_LOG = (W <= 18) ? 5 : W - 15;   // 자동 데모 확대 한계 2^ZOOM_LOG 배
+    localparam [CW-1:0] STEP_MIN = STEP0 >> ZOOM_LOG;
 
-    // 자동 데모 목표점 (-0.743643887, 0.131825904) = Seahorse Valley. 소수부 30 비트 값에서 맞춘다
-    localparam signed [63:0] TGT_RE30 = -64'sd798481544;
-    localparam signed [63:0] TGT_IM30 =  64'sd141546987;
-    localparam signed [63:0] TGT_RE64 = (CFRAC >= 30) ? (TGT_RE30 <<< (CFRAC - 30)) : (TGT_RE30 >>> (30 - CFRAC));
-    localparam signed [63:0] TGT_IM64 = (CFRAC >= 30) ? (TGT_IM30 <<< (CFRAC - 30)) : (TGT_IM30 >>> (30 - CFRAC));
+    // 자동 데모 목표점 (-0.7436438870371587, 0.1318259042053120) = Seahorse Valley.
+    // 소수부 48 비트 값에서 맞춘다 (CFRAC <= 48 이면 충분)
+    localparam signed [63:0] TGT_RE48 = -64'sd209317145784806;
+    localparam signed [63:0] TGT_IM48 =  64'sd37105693316051;
+    localparam signed [63:0] TGT_RE64 = (CFRAC >= 48) ? (TGT_RE48 <<< (CFRAC - 48)) : (TGT_RE48 >>> (48 - CFRAC));
+    localparam signed [63:0] TGT_IM64 = (CFRAC >= 48) ? (TGT_IM48 <<< (CFRAC - 48)) : (TGT_IM48 >>> (48 - CFRAC));
     localparam signed [CW-1:0] TGT_RE  = TGT_RE64[CW-1:0];
     localparam signed [CW-1:0] TGT_IM  = TGT_IM64[CW-1:0];
     localparam signed [CW-1:0] HOME_RE = {CW{1'b0}} - HALF;
@@ -88,23 +100,22 @@ module mandel_render #(
         .done(eng_done), .busy(busy)
     );
 
-    // 엔진 출력 픽셀 번호에 버퍼 시작 주소를 더한다 (1 클럭)
+    // 엔진 출력 픽셀 번호에 버퍼 시작 주소를 더한다 (1 클럭). 반복 횟수는 8 비트로 접는다
     wire [AW-1:0] base = wr_buf ? NPIX[AW-1:0] : {AW{1'b0}};
+    wire          lo0  = (eng_data[7:0] == 8'd0) && (eng_data != 0);
     always @(posedge clk) begin
         fb_we   <= eng_we;
         fb_addr <= base + eng_addr;
-        fb_data <= eng_data;
+        fb_data <= lo0 ? 8'd64 : eng_data[7:0];
     end
 
     // ---- 보기 영역 ------------------------------------------------------------
     reg signed [CW-1:0] cen_re, cen_im;
     reg                 zooming_in;       // 자동 데모 방향
 
-    // 목표까지 남은 거리의 1/16 (부호 유지)
-    wire signed [CW-1:0] goal_re = zooming_in ? TGT_RE : HOME_RE;
-    wire signed [CW-1:0] goal_im = zooming_in ? TGT_IM : {CW{1'b0}};
-    wire signed [CW-1:0] diff_re = goal_re - cen_re;
-    wire signed [CW-1:0] diff_im = goal_im - cen_im;
+    // 목표까지 남은 거리의 1/16 (부호 유지). 확대할 때만 당긴다
+    wire signed [CW-1:0] diff_re = TGT_RE - cen_re;
+    wire signed [CW-1:0] diff_im = TGT_IM - cen_im;
     wire signed [CW-1:0] pull_re = diff_re >>> 4;
     wire signed [CW-1:0] pull_im = diff_im >>> 4;
 
@@ -161,9 +172,9 @@ module mandel_render #(
                 // 보기 영역 갱신 (이전 프레임이 끝난 뒤 한 번)
                 S_VIEW: begin
                     if (auto_mode) begin
-                        cen_re <= cen_re + pull_re;
-                        cen_im <= cen_im + pull_im;
                         if (zooming_in) begin
+                            cen_re <= cen_re + pull_re;
+                            cen_im <= cen_im + pull_im;
                             step <= step - (step >> 5);
                             if (step <= STEP_MIN) zooming_in <= 1'b0;
                         end else begin

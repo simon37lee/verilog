@@ -8,7 +8,7 @@
 #   make V=2 timing 타이밍 요약 / make V=2 util 자원 사용량
 #   make clean      모든 버전 빌드 삭제
 #
-#   버전별 설정 (CORE_DIV, W) 은 rtl/vN/config.mk. XST -generics 로 최상위 파라미터에 넘긴다.
+#   버전별 설정 (CORE_DIV, W, IW) 은 rtl/vN/config.mk. XST -generics 로 최상위 파라미터에 넘긴다.
 #   DEFS 는 Verilog `define 목록 (XST -define): make V=2 DEFS=SLOTS=1  -> build/v2_SLOTS1/
 # ---------------------------------------------------------------------------
 TOP   = mandel_atlys
@@ -18,6 +18,7 @@ V    ?= 1
 RTL_DIR = ../../rtl
 include $(RTL_DIR)/v$(V)/config.mk
 
+IW   ?= 8
 DEFS ?=
 BUILD = build/v$(V)$(foreach d,$(DEFS),_$(subst =,,$(d)))
 RTL   = $(wildcard $(RTL_DIR)/common/*.v) $(wildcard $(RTL_DIR)/v$(V)/*.v) $(TOP).v
@@ -36,7 +37,7 @@ $(BUILD)/$(TOP).xst: $(CFG) Makefile
 	printf '%s\n' \
 	    'set -tmpdir xst/tmp' 'set -xsthdpdir xst' 'run' \
 	    '-ifn $(TOP).prj' '-ifmt mixed' '-ofn $(TOP)' '-ofmt NGC' '-p $(PART)' '-top $(TOP)' \
-	    '-generics {W=$(W) CORE_DIV=$(CORE_DIV) VERSION=$(V)}' \
+	    '-generics {W=$(W) IW=$(IW) CORE_DIV=$(CORE_DIV) VERSION=$(V)}' \
 	    $(if $(DEFS),'-define {$(DEFS)}') \
 	    '-opt_mode Speed' '-opt_level 1' '-keep_hierarchy No' > $@
 

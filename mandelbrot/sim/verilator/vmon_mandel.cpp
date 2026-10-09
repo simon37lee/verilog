@@ -20,9 +20,11 @@
 //     --core-mhz F   clk_core 주파수 (기본 1000 / CORE_DIV, RTL 의 CORE_HZ 와 같아야 렌더 시간이 맞다)
 //     --manual       버튼 조작 모드로 시작 (보드의 SW7)
 //     --single       단일 버퍼로 시작 (보드의 SW6)
+//     --sw-iter N    sw_iter 스위치 값 0~3, max_iter = (2^IW - 1) >> N
+//                    (기본 0, --check 는 버전끼리 비교하도록 max_iter 255 가 되는 IW - 8)
 //
 //   조작:  M 자동 데모 / 수동 전환,  B 더블 / 단일 버퍼 전환
-//          (수동) 화살표 이동 / Z 확대 / X 축소,  1~4 max_iter 255,127,63,31
+//          (수동) 화살표 이동 / Z 확대 / X 축소,  1~4 max_iter (2^IW - 1) >> 0~3 (IW = 8: 255,127,63,31)
 //          SPACE 일시정지 / S 스크린샷 / ESC 종료
 // ---------------------------------------------------------------------------
 #include <SDL.h>
@@ -40,6 +42,9 @@
 // 빌드할 때 Makefile 이 rtl/vN/config.mk 값으로 넘겨 준다
 #ifndef MANDEL_W
 #define MANDEL_W 18
+#endif
+#ifndef MANDEL_IW
+#define MANDEL_IW 8
 #endif
 #ifndef MANDEL_VERSION
 #define MANDEL_VERSION 1
@@ -79,6 +84,8 @@ struct Model {
         }
     }
     // 리셋 직후 기본 보기 영역에서 (px, py) 의 반복 횟수 (프레임버퍼에 쓰는 값)
+    // 반복 횟수 -> 프레임버퍼 8 비트 (mandel_render 와 같게: 안쪽 0, 아래 8 비트가 0 이면 같은 색인 64)
+    static int fold(int n) { return (n != 0 && (n & 255) == 0) ? 64 : (n & 255); }
     static int pixel(int px, int py, int max_iter) {
         const int64_t step   = wrap(((__int128)7 << CFRAC) / 640, CW);
         const int64_t cen_re = -((int64_t)1 << (CFRAC - 1)), cen_im = 0;
@@ -163,6 +170,7 @@ struct Checker {
                 int exp = Model::pixel(px, py, max_iter);
                 iters += exp == 0 ? max_iter : exp;
                 int g = got[py * FB_W + px];
+                exp = Model::fold(exp);
                 if (g != exp) {
                     if (bad < 10) printf("  mismatch (%d,%d): hw %d, model %d\n", px, py, g, exp);
                     bad++;
@@ -177,6 +185,7 @@ struct Checker {
 int main(int argc, char** argv) {
     int    scale = 1;
     bool   limit = true, check = false, manual = false, single = false;
+    int    sw_iter = -1;
     long   max_frames = -1, max_renders = -1;
     double core_mhz = 1000.0 / MANDEL_CORE_DIV;
     const char* dump = nullptr;
@@ -190,8 +199,11 @@ int main(int argc, char** argv) {
         else if (!strcmp(argv[i], "--core-mhz") && i + 1 < argc) core_mhz = atof(argv[++i]);
         else if (!strcmp(argv[i], "--manual"))                   manual = true;
         else if (!strcmp(argv[i], "--single"))                   single = true;
+        else if (!strcmp(argv[i], "--sw-iter") && i + 1 < argc)  sw_iter = atoi(argv[++i]) & 3;
     }
     if (check) manual = true;      // 검사는 처음 보기 영역 그대로
+    if (sw_iter < 0) sw_iter = check ? MANDEL_IW - 8 : 0;
+    const int max_iter = ((1 << MANDEL_IW) - 1) >> sw_iter;
     Verilated::commandArgs(argc, argv);
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
@@ -251,7 +263,7 @@ int main(int argc, char** argv) {
     dut->rst = 1;
     dut->btn_l = dut->btn_r = dut->btn_u = dut->btn_d = dut->btn_c = 0;
     dut->sw_zoom_out = 0;
-    dut->sw_iter = 0;
+    dut->sw_iter = sw_iter;
     dut->sw_manual = manual;
     dut->sw_single = single;
     dut->eval();
@@ -308,7 +320,7 @@ int main(int argc, char** argv) {
                     case SDLK_SPACE:  paused = !paused; break;
                     case SDLK_1: case SDLK_2: case SDLK_3: case SDLK_4:
                         dut->sw_iter = e.key.keysym.sym - SDLK_1;
-                        printf("max_iter = %d\n", 255 >> dut->sw_iter);
+                        printf("max_iter = %d\n", ((1 << MANDEL_IW) - 1) >> dut->sw_iter);
                         break;
                     case SDLK_m:
                         dut->sw_manual ^= 1;
@@ -375,7 +387,7 @@ int main(int argc, char** argv) {
             rc = 1;
         } else {
             uint64_t iters;
-            long bad = chk.compare(255, iters);
+            long bad = chk.compare(max_iter, iters);
             const double npix = FB_W * FB_H;
             // 첫 프레임 렌더 시간은 perf_bcd 가 다음 프레임 끝까지 유지되므로, frames == 1 일 때 읽은 값이
             // 아니라도 같은 보기 영역 (버튼 안 누름) 이면 같은 값이다
@@ -386,8 +398,8 @@ int main(int argc, char** argv) {
                    ms, core_mhz, cycles, ms > 0 ? iters / (ms * 1e3) : 0.0, (cycles - iters) / npix);
             const bool ok = !bad && chk.writes == FB_W * FB_H && !chk.dup;
             // check-all 이 모으는 한 줄 요약
-            printf("RESULT v%d: %s  W=%d  clk_core %.1f MHz  render %.2f ms  %.2f M iter/s  %.2f cycles/iter\n",
-                   MANDEL_VERSION, ok ? "PASS" : "FAIL", MANDEL_W, core_mhz, ms,
+            printf("RESULT v%d: %s  W=%d  max_iter %d  clk_core %.1f MHz  render %.2f ms  %.2f M iter/s  %.2f cycles/iter\n",
+                   MANDEL_VERSION, ok ? "PASS" : "FAIL", MANDEL_W, max_iter, core_mhz, ms,
                    ms > 0 ? iters / (ms * 1e3) : 0.0, iters ? cycles / iters : 0.0);
             if (!ok) {
                 printf("CHECK FAIL: %ld mismatches, %ld writes (expected %d), %ld duplicate addresses\n",

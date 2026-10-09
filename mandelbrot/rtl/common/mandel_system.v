@@ -18,6 +18,7 @@
 // ---------------------------------------------------------------------------
 module mandel_system #(
     parameter W       = 18,
+    parameter IW      = 8,              // 반복 횟수 비트 수 (max_iter 최대 2^IW - 1)
     parameter CORE_HZ = 50000000,
     parameter VERSION = 1               // 엔진 버전 (화면 표시용, 실제 엔진은 빌드할 때 rtl/vN 으로 고름)
 ) (
@@ -29,7 +30,7 @@ module mandel_system #(
     input  wire        sw_manual,       // 1 = 버튼 조작, 0 = 자동 데모 (확대/축소 반복)
     input  wire        sw_single,       // 1 = 단일 버퍼 (그리는 과정이 보임), 0 = 더블 버퍼
     input  wire        sw_zoom_out,     // 1 = btn_c 가 축소
-    input  wire [1:0]  sw_iter,         // max_iter: 0 = 255, 1 = 127, 2 = 63, 3 = 31
+    input  wire [1:0]  sw_iter,         // max_iter = (2^IW - 1) >> sw_iter  (IW = 8: 255, 127, 63, 31)
     // 영상 출력 (clk_pix)
     output wire [7:0]  r, g, b,
     output wire        de, hsync, vsync,
@@ -58,7 +59,7 @@ module mandel_system #(
         in_s1 <= {sw_manual, sw_single, btn_l, btn_r, btn_u, btn_d, btn_c, sw_zoom_out, sw_iter};
         in_s2 <= in_s1;
     end
-    wire [7:0] max_iter = 8'hFF >> in_s2[1:0];
+    wire [IW-1:0] max_iter = {IW{1'b1}} >> in_s2[1:0];
 
     // ---- 렌더러 -------------------------------------------------------------------
     wire wr_buf, swap_req;
@@ -66,7 +67,7 @@ module mandel_system #(
     reg  [1:0] ack_s;
     always @(posedge clk_core) ack_s <= {ack_s[0], swap_ack};
 
-    mandel_render #(.W(W), .AW(AW), .CORE_HZ(CORE_HZ)) u_render (
+    mandel_render #(.W(W), .IW(IW), .AW(AW), .CORE_HZ(CORE_HZ)) u_render (
         .clk(clk_core), .rst(rst_core),
         .auto_mode(!in_s2[9]), .dbl_buf(!in_s2[8]),
         .btn_l(in_s2[7]), .btn_r(in_s2[6]), .btn_u(in_s2[5]), .btn_d(in_s2[4]), .btn_c(in_s2[3]),

@@ -4,10 +4,11 @@
 #   make run            V 버전 빌드 후 실시간 실행 (기본 V=1)
 #   make V=2 run        rtl/common + rtl/v2 로 빌드 (obj_v2/ 에 따로 빌드)
 #   make check          첫 렌더 프레임을 C++ 고정소수점 모델과 비교 + 렌더 시간 / 반복 속도 보고
+#                       CHECK_ARGS="--sw-iter 0" 로 IW 최대 반복 횟수로도 검사할 수 있다
 #   make check-all      rtl/v*/ 의 모든 버전을 검사하고 결과를 표로
 #   make clean
 #
-#   버전별 설정 (clk_core 분주비 CORE_DIV, 비트 폭 W) 은 rtl/vN/config.mk.
+#   버전별 설정 (clk_core 분주비 CORE_DIV, 비트 폭 W, 반복 횟수 비트 IW) 은 rtl/vN/config.mk.
 #   명령행에서 덮어쓸 수 있다: make V=2 W=24 check  (빌드 디렉터리는 obj_v2_w24/)
 #   DEFS 는 Verilog `define 목록: make V=2 DEFS=SLOTS=1 check  (obj_v2_SLOTS1/)
 # ---------------------------------------------------------------------------
@@ -23,6 +24,7 @@ VERSIONS = $(shell ls -d $(RTL_DIR)/v*/ | sed 's|.*/v\([0-9]*\)/|\1|' | sort -n)
 
 RTL = $(wildcard $(RTL_DIR)/common/*.v) $(wildcard $(RTL_DIR)/v$(V)/*.v)
 
+IW   ?= 8
 DEFS ?=
 
 # W / DEFS 를 바꾸면 다른 디렉터리에 빌드 (기본 결과와 섞이지 않게)
@@ -37,9 +39,9 @@ all: $(BIN)
 $(BIN): $(RTL) $(RTL_DIR)/v$(V)/config.mk vmon_mandel.cpp Makefile
 	$(VERILATOR) --cc --exe -O3 --x-assign fast --x-initial fast \
 	    -Wno-fatal -Wno-WIDTH \
-	    --top-module mandel_system -GW=$(W) -GCORE_HZ=$(CORE_HZ) -GVERSION=$(V) $(addprefix -D,$(DEFS)) \
+	    --top-module mandel_system -GW=$(W) -GIW=$(IW) -GCORE_HZ=$(CORE_HZ) -GVERSION=$(V) $(addprefix -D,$(DEFS)) \
 	    --clk clk_pix --clk clk_core \
-	    -CFLAGS "-std=c++14 -DMANDEL_W=$(W) -DMANDEL_VERSION=$(V) -DMANDEL_CORE_DIV=$(CORE_DIV) $(shell $(SDL2_CONFIG) --cflags)" \
+	    -CFLAGS "-std=c++14 -DMANDEL_W=$(W) -DMANDEL_IW=$(IW) -DMANDEL_VERSION=$(V) -DMANDEL_CORE_DIV=$(CORE_DIV) $(shell $(SDL2_CONFIG) --cflags)" \
 	    -LDFLAGS "$(shell $(SDL2_CONFIG) --libs)" \
 	    --Mdir $(MDIR) $(RTL) vmon_mandel.cpp
 	$(MAKE) -C $(MDIR) -f Vmandel_system.mk -j $(OPT)
@@ -48,7 +50,7 @@ run: $(BIN)
 	./$(BIN)
 
 check: $(BIN)
-	SDL_VIDEODRIVER=dummy ./$(BIN) --no-limit --renders 2 --check --dump $(MDIR)/check.bmp
+	SDL_VIDEODRIVER=dummy ./$(BIN) --no-limit --renders 2 --check --dump $(MDIR)/check.bmp $(CHECK_ARGS)
 
 # 버전마다 빌드 + 검사, 마지막에 RESULT 줄만 모아서 보여 준다
 check-all:
