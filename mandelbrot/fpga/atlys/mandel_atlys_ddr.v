@@ -14,6 +14,10 @@
 //
 //   DDR2: 32 비트 포트 0 = 쓰기 (clk_core), 1 = 읽기 (clk_pix)
 //
+//   DDR2 보정 문제 점검용 빌드 (DEFS=...):
+//     DDRONLY : Mandelbrot 쪽 (계산, 화면) 을 빼고 MIG + 두 번째 PLL + LED 만
+//     RSTBTN  : MIG 리셋 입력을 RESET 버튼 (active-low) 에 연결 (MIG 예제 설계와 같게)
+//
 //   LED: [0] PLL lock  [1] RESET 버튼  [2]/[3] core/pix 클럭 깜빡임  [4] vsync  [5] 렌더 프레임
 //        [6] MCB 클럭 버퍼 (BUFPLL_MCB) 잠금  [7] DDR2 보정 완료 (calib_done)
 // ---------------------------------------------------------------------------
@@ -110,7 +114,11 @@ module mandel_atlys #(
     wire [31:0] p1_rd_data;
 
     wire bufpll_lock;
+`ifdef RSTBTN
+    mig_ddr2 #(.C3_RST_ACT_LOW(1)) u_mig (
+`else
     mig_ddr2 u_mig (
+`endif
         .mcb3_dram_dq(mcb3_dram_dq), .mcb3_dram_a(mcb3_dram_a), .mcb3_dram_ba(mcb3_dram_ba),
         .mcb3_dram_ras_n(mcb3_dram_ras_n), .mcb3_dram_cas_n(mcb3_dram_cas_n), .mcb3_dram_we_n(mcb3_dram_we_n),
         .mcb3_dram_odt(mcb3_dram_odt), .mcb3_dram_cke(mcb3_dram_cke),
@@ -118,7 +126,11 @@ module mandel_atlys #(
         .mcb3_dram_udqs(mcb3_dram_udqs), .mcb3_dram_udqs_n(mcb3_dram_udqs_n),
         .mcb3_dram_dqs(mcb3_dram_dqs), .mcb3_dram_dqs_n(mcb3_dram_dqs_n),
         .mcb3_dram_ck(mcb3_dram_ck), .mcb3_dram_ck_n(mcb3_dram_ck_n), .mcb3_rzq(mcb3_rzq),
+`ifdef RSTBTN
+        .c3_sys_clk(clk_100m), .c3_sys_rst_i(btn_rst_n),
+`else
         .c3_sys_clk(clk_100m), .c3_sys_rst_i(1'b0),
+`endif
         .c3_clk0(c3_clk0), .c3_rst0(c3_rst0), .c3_bufpll_lock_o(bufpll_lock),
         .c3_calib_done(calib_done),
         // 포트 0: 쓰기 (clk_core)
@@ -146,6 +158,14 @@ module mandel_atlys #(
     wire [15:0] frames;
     wire        busy;
 
+`ifdef DDRONLY
+    assign {r, g, b} = 24'd0;
+    assign {de, hsync, vsync} = 3'b000;
+    assign frames = 0;
+    assign busy   = 1'b0;
+    assign {p0_cmd_en, p0_cmd_instr, p0_cmd_bl, p0_cmd_byte_addr, p0_wr_en, p0_wr_mask, p0_wr_data} = 0;
+    assign {p1_cmd_en, p1_cmd_instr, p1_cmd_bl, p1_cmd_byte_addr, p1_rd_en} = 0;
+`else
     mandel_system #(.W(W), .IW(IW), .CORE_HZ(CORE_HZ), .VERSION(VERSION)) u_sys (
         .clk_core(clk_core), .clk_pix(clk_pix),
         .rst(!btn_rst_n || !sys_ok),
@@ -163,6 +183,7 @@ module mandel_atlys #(
         .fb_we(), .fb_waddr(), .fb_wdata(), .perf_bcd(),
         .frames(frames), .busy(busy)
     );
+`endif
 
     // ---- 상태 LED -----------------------------------------------------------
     reg [24:0] hb_core = 0, hb_pix = 0;
