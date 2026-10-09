@@ -27,3 +27,4 @@ nes_ref/
 *.nes
 !nes_atlys/roms/test/*.nes
 mandelbrot/sim/model/obj/
+mandelbrot/fpga/atlys/ddr_test/build/
