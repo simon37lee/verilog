@@ -9,6 +9,7 @@
 #
 #   버전별 설정 (clk_core 분주비 CORE_DIV, 비트 폭 W) 은 rtl/vN/config.mk.
 #   명령행에서 덮어쓸 수 있다: make V=2 W=24 check  (빌드 디렉터리는 obj_v2_w24/)
+#   DEFS 는 Verilog `define 목록: make V=2 DEFS=SLOTS=1 check  (obj_v2_SLOTS1/)
 # ---------------------------------------------------------------------------
 VERILATOR   ?= verilator
 SDL2_CONFIG ?= sdl2-config
@@ -22,9 +23,11 @@ VERSIONS = $(shell ls -d $(RTL_DIR)/v*/ | sed 's|.*/v\([0-9]*\)/|\1|' | sort -n)
 
 RTL = $(wildcard $(RTL_DIR)/common/*.v) $(wildcard $(RTL_DIR)/v$(V)/*.v)
 
-# W 를 덮어쓰면 다른 디렉터리에 빌드 (기본 W 결과와 섞이지 않게)
+DEFS ?=
+
+# W / DEFS 를 바꾸면 다른 디렉터리에 빌드 (기본 결과와 섞이지 않게)
 DEFAULT_W := $(shell sed -n 's/^W *?= *//p' $(RTL_DIR)/v$(V)/config.mk)
-MDIR = obj_v$(V)$(if $(filter-out $(DEFAULT_W),$(W)),_w$(W))
+MDIR = obj_v$(V)$(if $(filter-out $(DEFAULT_W),$(W)),_w$(W))$(foreach d,$(DEFS),_$(subst =,,$(d)))
 BIN  = $(MDIR)/Vmandel_system
 
 OPT = OPT_FAST="-O3 -march=native" OPT_GLOBAL="-O3 -march=native"
@@ -34,7 +37,7 @@ all: $(BIN)
 $(BIN): $(RTL) $(RTL_DIR)/v$(V)/config.mk vmon_mandel.cpp Makefile
 	$(VERILATOR) --cc --exe -O3 --x-assign fast --x-initial fast \
 	    -Wno-fatal -Wno-WIDTH \
-	    --top-module mandel_system -GW=$(W) -GCORE_HZ=$(CORE_HZ) -GVERSION=$(V) \
+	    --top-module mandel_system -GW=$(W) -GCORE_HZ=$(CORE_HZ) -GVERSION=$(V) $(addprefix -D,$(DEFS)) \
 	    --clk clk_pix --clk clk_core \
 	    -CFLAGS "-std=c++14 -DMANDEL_W=$(W) -DMANDEL_VERSION=$(V) -DMANDEL_CORE_DIV=$(CORE_DIV) $(shell $(SDL2_CONFIG) --cflags)" \
 	    -LDFLAGS "$(shell $(SDL2_CONFIG) --libs)" \
