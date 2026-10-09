@@ -20,7 +20,9 @@ include $(RTL_DIR)/v$(V)/config.mk
 
 IW   ?= 8
 DEFS ?=
-BUILD = build/v$(V)$(foreach d,$(DEFS),_$(subst =,,$(d)))
+# CORE_DIV 를 명령행에서 바꾸면 다른 디렉터리에 빌드 (make V=4 CORE_DIV=7 -> build/v4_div7/)
+DEFAULT_DIV := $(shell sed -n 's/^CORE_DIV *?= *//p' $(RTL_DIR)/v$(V)/config.mk)
+BUILD = build/v$(V)$(if $(filter-out $(DEFAULT_DIV),$(CORE_DIV)),_div$(CORE_DIV))$(foreach d,$(DEFS),_$(subst =,,$(d)))
 RTL   = $(wildcard $(RTL_DIR)/common/*.v) $(wildcard $(RTL_DIR)/v$(V)/*.v) $(TOP).v
 CFG   = $(RTL_DIR)/v$(V)/config.mk
 
