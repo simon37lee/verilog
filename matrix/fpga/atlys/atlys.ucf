@@ -1,0 +1,34 @@
+## ---------------------------------------------------------------------------
+## matrix_atlys 제약 파일 (Digilent Atlys, XC6SLX45-CSG324-3)
+## 핀 번호는 Digilent Atlys 마스터 UCF 기준
+## ---------------------------------------------------------------------------
+
+## 100 MHz 오실레이터
+NET "clk_100m" LOC = "L15" | IOSTANDARD = LVCMOS33;
+NET "clk_100m" TNM_NET = "TNM_clk100";
+TIMESPEC "TS_clk100" = PERIOD "TNM_clk100" 10 ns HIGH 50%;
+
+## RESET 버튼 (빨간 버튼). 매뉴얼과 달리 실제 보드에서는 평소 1 (M0 겸용 핀) -> active-low
+NET "btn_rst_n" LOC = "T15" | IOSTANDARD = LVCMOS33;
+NET "btn_rst_n" TIG;
+
+## LED (상태 표시용, 타이밍 무시)
+NET "led<0>" LOC = "U18" | IOSTANDARD = LVCMOS33;
+NET "led<1>" LOC = "M14" | IOSTANDARD = LVCMOS33;
+NET "led<2>" LOC = "N14" | IOSTANDARD = LVCMOS33;
+NET "led<3>" LOC = "L14" | IOSTANDARD = LVCMOS33;
+NET "led<4>" LOC = "M13" | IOSTANDARD = LVCMOS33;
+NET "led<5>" LOC = "D4"  | IOSTANDARD = LVCMOS33;
+NET "led<6>" LOC = "P16" | IOSTANDARD = LVCMOS33;
+NET "led<7>" LOC = "N12" | IOSTANDARD = LVCMOS33;
+NET "led<*>" TIG;
+
+## HDMI OUT (J2 커넥터, Bank 0). IOSTANDARD 는 RTL 의 OBUFDS 에서 TMDS_33 으로 지정
+NET "hdmi_clk_p"  LOC = "B6";
+NET "hdmi_clk_n"  LOC = "A6";
+NET "hdmi_d_p<0>" LOC = "D8";
+NET "hdmi_d_n<0>" LOC = "C8";
+NET "hdmi_d_p<1>" LOC = "C7";
+NET "hdmi_d_n<1>" LOC = "A7";
+NET "hdmi_d_p<2>" LOC = "B8";
+NET "hdmi_d_n<2>" LOC = "A8";
