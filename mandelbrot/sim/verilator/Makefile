@@ -10,6 +10,7 @@
 #
 #   버전별 설정 (clk_core 분주비 CORE_DIV, 비트 폭 W, 반복 횟수 비트 IW) 은 rtl/vN/config.mk.
 #   명령행에서 덮어쓸 수 있다: make V=2 W=24 check  (빌드 디렉터리는 obj_v2_w24/)
+#                              make V=4 CORE_DIV=6 check  (obj_v4_div6/)
 #   DEFS 는 Verilog `define 목록: make V=2 DEFS=SLOTS=1 check  (obj_v2_SLOTS1/)
 # ---------------------------------------------------------------------------
 VERILATOR   ?= verilator
@@ -28,8 +29,9 @@ IW   ?= 8
 DEFS ?=
 
 # W / DEFS 를 바꾸면 다른 디렉터리에 빌드 (기본 결과와 섞이지 않게)
-DEFAULT_W := $(shell sed -n 's/^W *?= *//p' $(RTL_DIR)/v$(V)/config.mk)
-MDIR = obj_v$(V)$(if $(filter-out $(DEFAULT_W),$(W)),_w$(W))$(foreach d,$(DEFS),_$(subst =,,$(d)))
+DEFAULT_W   := $(shell sed -n 's/^W *?= *//p' $(RTL_DIR)/v$(V)/config.mk)
+DEFAULT_DIV := $(shell sed -n 's/^CORE_DIV *?= *//p' $(RTL_DIR)/v$(V)/config.mk)
+MDIR = obj_v$(V)$(if $(filter-out $(DEFAULT_W),$(W)),_w$(W))$(if $(filter-out $(DEFAULT_DIV),$(CORE_DIV)),_div$(CORE_DIV))$(foreach d,$(DEFS),_$(subst =,,$(d)))
 BIN  = $(MDIR)/Vmandel_system
 
 OPT = OPT_FAST="-O3 -march=native" OPT_GLOBAL="-O3 -march=native"

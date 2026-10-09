@@ -38,6 +38,7 @@ make V=2 run        # 다른 버전
 make check          # 첫 프레임을 C++ 고정소수점 모델과 비트 단위 비교 + 렌더 시간 / 반복 속도 보고
 make check-all      # 모든 버전 검사 + 결과 요약 (RESULT 줄)
 make W=24 check     # 비트 폭을 바꿔 검사 (RTL 파라미터와 모델 둘 다, obj_v1_w24/ 에 빌드)
+make V=4 CORE_DIV=6 check   # clk_core 를 바꿔 검사 (obj_v4_div6/ 에 빌드, 렌더 시간이 그 클럭 기준)
 make V=4 check CHECK_ARGS="--sw-iter 0"   # 검사는 기본 max_iter 255 (버전끼리 비교용). v4 의 1023 로 검사
 
 cd fpga/atlys
