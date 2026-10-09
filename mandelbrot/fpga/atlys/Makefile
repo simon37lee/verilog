@@ -26,7 +26,10 @@ BOARD_UCF ?= atlys.ucf
 BOARD_SRC ?=
 # CORE_DIV 를 명령행에서 바꾸면 다른 디렉터리에 빌드 (make V=4 CORE_DIV=7 -> build/v4_div7/)
 DEFAULT_DIV := $(shell sed -n 's/^CORE_DIV *?= *//p' $(RTL_DIR)/v$(V)/config.mk)
-BUILD = build/v$(V)$(if $(filter-out $(DEFAULT_DIV),$(CORE_DIV)),_div$(CORE_DIV))$(foreach d,$(DEFS),_$(subst =,,$(d)))
+# DEFS 가 여러 개면 이어 붙인다 (make V=5 DEFS="PLLWAIT RINGS=1" -> build/v5_PLLWAIT_RINGS1/)
+EMPTY :=
+SPACE := $(EMPTY) $(EMPTY)
+BUILD = build/v$(V)$(if $(filter-out $(DEFAULT_DIV),$(CORE_DIV)),_div$(CORE_DIV))$(subst $(SPACE),,$(foreach d,$(DEFS),_$(subst =,,$(d))))
 # 버전 폴더에 공통 파일과 같은 이름이 있으면 그것으로 바꾼다 (rtl/vN/sim/ 은 시뮬레이션 전용이라 뺀다)
 VER_RTL = $(wildcard $(RTL_DIR)/v$(V)/*.v)
 RTL   = $(filter-out $(addprefix $(RTL_DIR)/common/,$(notdir $(VER_RTL))),$(wildcard $(RTL_DIR)/common/*.v)) \
