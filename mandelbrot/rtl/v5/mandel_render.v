@@ -74,6 +74,7 @@ module mandel_render #(
     // 상태
     output reg  [23:0]   perf_bcd,      // 마지막 프레임 렌더 시간, 10 us 단위 BCD
     output reg  [15:0]   frames,        // 완성한 프레임 수
+    output wire [2:0]    dbg_state,     // 디버그: 상태 (0 VIEW 1 CALC 2 FRAME 3 RUN 4 FLUSH 5 SWAP)
     output wire          busy
 );
     localparam CW    = W + 8;
@@ -137,6 +138,7 @@ module mandel_render #(
     // ---- 상태 -----------------------------------------------------------------
     localparam S_VIEW = 3'd0, S_CALC = 3'd1, S_FRAME = 3'd2, S_RUN = 3'd3, S_FLUSH = 3'd4, S_SWAP = 3'd5;
     reg [2:0] state;
+    assign dbg_state = state;
     reg [1:0] calc_cnt;
 
     // 화면 절반 = step * 400, step * 300 (800 x 600 고정). step 은 S_VIEW 에서만 바뀌므로

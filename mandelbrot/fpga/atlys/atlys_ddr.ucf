@@ -67,7 +67,6 @@ TIMESPEC "TS_pix_core" = FROM "TNM_pix" TO "TNM_core" TIG;
 # =============================================================================
 CONFIG MCB_PERFORMANCE = STANDARD;
 NET "u_mig/memc3_wrapper_inst/mcb_ui_top_inst/mcb_raw_wrapper_inst/selfrefresh_mcb_mode" TIG;
-NET "u_mig/c3_bufpll_locked" TIG;
 INST "u_mig/memc3_wrapper_inst/mcb_ui_top_inst/mcb_raw_wrapper_inst/gen_term_calib.mcb_soft_calibration_top_inst/mcb_soft_calibration_inst/DONE_SOFTANDHARD_CAL*" TIG;
 NET "u_mig/memc3_wrapper_inst/mcb_ui_top_inst/mcb_raw_wrapper_inst/gen_term_calib.mcb_soft_calibration_top_inst/mcb_soft_calibration_inst/CKE_Train" TIG;
 

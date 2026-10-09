@@ -117,7 +117,7 @@ struct Monitor {
 };
 
 // 화면 검사: 모니터가 받은 마지막 화면 (FB_W x FB_H 를 정수배 확대) 을 프레임버퍼 값 + 팔레트와 비교.
-// 왼쪽 위 글자 상자 (200 x 60) 는 뺀다. 반환: 다른 픽셀 수 (화면을 못 받았으면 -1)
+// 왼쪽 위 글자 상자 (200 x 80, v5 는 디버그 셋째 줄까지) 는 뺀다. 반환: 다른 픽셀 수 (화면을 못 받았으면 -1)
 long screen_compare(const Monitor& m, const std::vector<int>& fbv, const uint32_t pal[256], long& checked) {
     checked = 0;
     if (m.width < FB_W || m.height < FB_H) return -1;
@@ -125,7 +125,7 @@ long screen_compare(const Monitor& m, const std::vector<int>& fbv, const uint32_
     long bad = 0;
     for (int sy = 0; sy < FB_H * sy_scale; sy++)
         for (int sx = 0; sx < FB_W * sx_scale; sx++) {
-            if (sx < 200 && sy < 60) continue;
+            if (sx < 200 && sy < 80) continue;
             const int v = fbv[(sy / sy_scale) * FB_W + sx / sx_scale];
             if (v < 0) continue;
             const uint32_t want = pal[v] & 0xFFFFFF, got = m.fb[sy * MAX_W + sx] & 0xFFFFFF;

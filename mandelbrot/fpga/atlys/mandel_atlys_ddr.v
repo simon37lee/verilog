@@ -13,8 +13,11 @@
 //
 //   DDR2: MIG 3.92 로 만든 컨트롤러 (fpga/atlys/mig/, 32 비트 포트 0 = 쓰기 clk_core, 1 = 읽기 clk_pix)
 //
+//   DEFS=DDR600 : DDR2 를 300 MHz (MCB 2x = 600 MHz) 로. PoC 라이브러리의 Atlys MIG 설정과 같은 주파수.
+//                 VCO 600 MHz 로 바뀌어서 픽셀 /15, TMDS /3, 보정 /8 = 75 MHz, 연산 /5 = 120 MHz (CORE_DIV 무시)
+//
 //   LED: [0] PLL lock  [1] RESET 버튼  [2]/[3] core/pix 클럭 깜빡임  [4] vsync  [5] 렌더 프레임
-//        [6] 코어 busy  [7] DDR2 보정 완료 (calib_done)
+//        [6] MCB 클럭 버퍼 (BUFPLL_MCB) 잠금  [7] DDR2 보정 완료 (calib_done)
 // ---------------------------------------------------------------------------
 module mandel_atlys #(
     // Makefile 이 rtl/vN/config.mk 값을 XST -generics 로 넘긴다
@@ -54,7 +57,11 @@ module mandel_atlys #(
     output wire        mcb3_dram_ck_n,
     inout  wire        mcb3_rzq
 );
+`ifdef DDR600
+    localparam CORE_HZ = 120000000;
+`else
     localparam CORE_HZ = 1000000000 / CORE_DIV;
+`endif
 
     // ---- 클럭 생성 ---------------------------------------------------------
     wire clk_in;
@@ -63,6 +70,18 @@ module mandel_atlys #(
     wire clkfb, pll_locked;
     wire clk_2x_unbuf, clk_2x_180_unbuf, clk_pix_unbuf, clk_x5_unbuf, clk_drp_unbuf, clk_core_unbuf;
 
+`ifdef DDR600
+    PLL_BASE #(
+        .CLKIN_PERIOD   (10.0),
+        .DIVCLK_DIVIDE  (1),
+        .CLKFBOUT_MULT  (6),        // VCO 600 MHz
+        .CLKOUT0_DIVIDE (1),   .CLKOUT0_PHASE (0.0),     // 600 MHz (MCB)
+        .CLKOUT1_DIVIDE (1),   .CLKOUT1_PHASE (180.0),   // 600 MHz 180° (MCB)
+        .CLKOUT2_DIVIDE (15),                            //  40 MHz
+        .CLKOUT3_DIVIDE (3),                             // 200 MHz
+        .CLKOUT4_DIVIDE (8),                             //  75 MHz
+        .CLKOUT5_DIVIDE (5),                             // 120 MHz clk_core
+`else
     PLL_BASE #(
         .CLKIN_PERIOD   (10.0),
         .DIVCLK_DIVIDE  (1),
@@ -73,6 +92,7 @@ module mandel_atlys #(
         .CLKOUT3_DIVIDE (5),                             // 200 MHz
         .CLKOUT4_DIVIDE (16),                            // 62.5 MHz
         .CLKOUT5_DIVIDE (CORE_DIV),                      // clk_core
+`endif
         .CLK_FEEDBACK   ("CLKFBOUT"),
         .COMPENSATION   ("INTERNAL")
     ) u_pll (
@@ -108,7 +128,12 @@ module mandel_atlys #(
     wire [29:0] p1_cmd_byte_addr;
     wire [31:0] p1_rd_data;
 
+    wire bufpll_lock;
+`ifdef DDR600
+    mig_ddr2 #(.C3_MEMCLK_PERIOD(3333)) u_mig (
+`else
     mig_ddr2 u_mig (
+`endif
         .mcb3_dram_dq(mcb3_dram_dq), .mcb3_dram_a(mcb3_dram_a), .mcb3_dram_ba(mcb3_dram_ba),
         .mcb3_dram_ras_n(mcb3_dram_ras_n), .mcb3_dram_cas_n(mcb3_dram_cas_n), .mcb3_dram_we_n(mcb3_dram_we_n),
         .mcb3_dram_odt(mcb3_dram_odt), .mcb3_dram_cke(mcb3_dram_cke),
@@ -117,7 +142,7 @@ module mandel_atlys #(
         .mcb3_dram_dqs(mcb3_dram_dqs), .mcb3_dram_dqs_n(mcb3_dram_dqs_n),
         .mcb3_dram_ck(mcb3_dram_ck), .mcb3_dram_ck_n(mcb3_dram_ck_n), .mcb3_rzq(mcb3_rzq),
         .c3_clk_2x(clk_2x_unbuf), .c3_clk_2x_180(clk_2x_180_unbuf), .c3_drp_clk_in(clk_drp_unbuf),
-        .c3_pll_locked(pll_locked), .c3_sys_rst(1'b0),
+        .c3_pll_locked(pll_locked), .c3_sys_rst(1'b0), .c3_bufpll_lock_o(bufpll_lock),
         .c3_calib_done(calib_done),
         // 포트 0: 쓰기 (clk_core)
         .c3_p0_cmd_clk(clk_core), .c3_p0_cmd_en(p0_cmd_en), .c3_p0_cmd_instr(p0_cmd_instr),
@@ -175,7 +200,7 @@ module mandel_atlys #(
     end
 
     assign led = {calib_done,        // 7: DDR2 보정 완료
-                  busy,              // 6: 코어 계산 중
+                  bufpll_lock,       // 6: MCB 클럭 버퍼 잠금
                   frames[2],         // 5: 렌더 프레임
                   vs_cnt[5],         // 4: vsync
                   hb_pix[24],        // 3

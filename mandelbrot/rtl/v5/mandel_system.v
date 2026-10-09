@@ -98,8 +98,11 @@ module mandel_system #(
     wire [18:0] pix_limit;
     wire        fb_flushed, frame_start;
 
+    wire [2:0] dbg_state, dbg_xs;
+    wire [9:0] dbg_line;
+
     mandel_render #(.W(W), .IW(IW), .AW(AW), .CORE_HZ(CORE_HZ)) u_render (
-        .clk(clk_core), .rst(rst_core),
+        .clk(clk_core), .rst(rst_core), .dbg_state(dbg_state),
         .pix_limit(pix_limit), .fb_flushed(fb_flushed), .frame_start(frame_start),
         .auto_mode(!in_s2[9]), .dbl_buf(!in_s2[8]),
         .btn_l(in_s2[7]), .btn_r(in_s2[6]), .btn_u(in_s2[5]), .btn_d(in_s2[4]), .btn_c(in_s2[3]),
@@ -109,6 +112,21 @@ module mandel_system #(
         .perf_bcd(perf_bcd), .frames(frames), .busy(busy)
     );
 
+    // ---- 디버그 (화면 셋째 줄): 렌더러 상태, 쓰기 상태, 쓰는 줄 (10 진 3 자리), 플래그 -----------
+    //   플래그 = 4 * calib_done + 2 * 명령 FIFO 비었음 + 1 * 쓰기 FIFO 비었음
+    reg [23:0] dbg;
+    reg [3:0]  l100, l10, l1;
+    integer    q;
+    always @(*) begin
+        q    = dbg_line;
+        l100 = q / 100;
+        l10  = (q / 10) % 10;
+        l1   = q % 10;
+    end
+    always @(posedge clk_core)
+        dbg <= {1'b0, dbg_state, 1'b0, dbg_xs, l100, l10, l1,
+                1'b0, cal_core[1], p0_cmd_empty, p0_wr_empty};
+
     // ---- DDR2 쓰기 (clk_core) -------------------------------------------------------
     // 엔진이 쓰는 주소 = 버퍼 * 480000 + 픽셀 번호. 버퍼 번호는 wr_buf (프레임 동안 고정) 로 따로 받는다
     wire [18:0] pix_idx = wr_buf ? fb_waddr - 20'd480000 : fb_waddr[18:0];
@@ -117,7 +135,7 @@ module mandel_system #(
         .clk(clk_core), .rst(rst_core), .calib_done(cal_core[1]),
         .frame_start(frame_start), .wr_buf(wr_buf),
         .pix_we(fb_we), .pix_idx(pix_idx), .pix_data(fb_wdata),
-        .pix_limit(pix_limit), .flushed(fb_flushed),
+        .pix_limit(pix_limit), .flushed(fb_flushed), .dbg_xs(dbg_xs), .dbg_line(dbg_line),
         .cmd_en(p0_cmd_en), .cmd_instr(p0_cmd_instr), .cmd_bl(p0_cmd_bl), .cmd_byte_addr(p0_cmd_byte_addr),
         .cmd_full(p0_cmd_full), .cmd_empty(p0_cmd_empty),
         .wr_en(p0_wr_en), .wr_mask(p0_wr_mask), .wr_data(p0_wr_data), .wr_empty(p0_wr_empty)
@@ -195,7 +213,7 @@ module mandel_system #(
         .clk(clk_pix), .rst(rst_pix),
         .rd_buf(rd_buf), .ln_req(ln_req), .ln_line(ln_line), .ln_buf(ln_buf),
         .lb_addr(lb_addr), .lb_data(lb_data),
-        .perf_bcd(perf_pix), .render_done(render_done), .vs_start(vs_start),
+        .perf_bcd(perf_pix), .render_done(render_done), .vs_start(vs_start), .dbg(dbg),
         .r(r), .g(g), .b(b), .de(de), .hsync(hsync), .vsync(vsync)
     );
 endmodule

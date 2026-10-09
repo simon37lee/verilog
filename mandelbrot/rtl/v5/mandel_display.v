@@ -31,6 +31,8 @@ module mandel_display #(
     // 표시할 렌더 시간 (10 us 단위 BCD 6 자리), 렌더 프레임 완성 펄스 (fps 계산)
     input  wire [23:0]   perf_bcd,
     input  wire          render_done,
+    // 디버그 셋째 줄: 숫자 6 개 (각 4 비트, 0~9 만 표시). mandel_system 참고
+    input  wire [23:0]   dbg,
     output wire          vs_start,      // vsync 시작 (1 클럭 펄스, 버퍼 교체 시점)
     // 영상 출력
     output reg  [7:0]    r, g, b,
@@ -100,7 +102,7 @@ module mandel_display #(
 
     // ---- 글자 위치: 칸 16x16 (5x7 글리프를 2 배), 왼쪽 위 (TX, TY) 부터 NCHAR 칸, 줄 간격 LH ----
     localparam TX = 16, TY = 16, NCHAR = 11, LH = 20;
-    localparam BX0 = TX - 6, BY0 = TY - 6, BX1 = TX + NCHAR * 16 + 4, BY1 = TY + LH + 16 + 4;
+    localparam BX0 = TX - 6, BY0 = TY - 6, BX1 = TX + NCHAR * 16 + 4, BY1 = TY + 2 * LH + 16 + 4;
 
     // 버전 번호 (10 진 두 자리)
     localparam [3:0] VER_HI = VERSION / 10, VER_LO = VERSION % 10;
@@ -108,13 +110,24 @@ module mandel_display #(
     // 문자 코드: 0~9 숫자, 10 '.', 11 'm', 12 's', 13 'f', 14 'p', 15 공백, 16 'v'
     //   앞자리 0 은 공백으로 (자릿수마다 그 앞이 모두 0 인지 본다)
     function [4:0] char_at;
-        input        line;
+        input [1:0]  line;
         input [3:0]  col;
         input [23:0] v;         // 렌더 시간 BCD
         input [11:0] f;         // fps BCD
+        input [23:0] d;         // 디버그 숫자
         begin
             char_at = 5'd15;
-            if (!line) begin
+            if (line == 2'd2) begin
+                case (col)
+                    4'd0: char_at = {1'b0, d[23:20]};
+                    4'd2: char_at = {1'b0, d[19:16]};
+                    4'd4: char_at = {1'b0, d[15:12]};
+                    4'd5: char_at = {1'b0, d[11:8]};
+                    4'd6: char_at = {1'b0, d[7:4]};
+                    4'd8: char_at = {1'b0, d[3:0]};
+                    default: ;
+                endcase
+            end else if (line == 2'd0) begin
                 case (col)
                     4'd0: if (v[23:20] != 0)  char_at = {1'b0, v[23:20]};
                     4'd1: if (v[23:16] != 0)  char_at = {1'b0, v[19:16]};
@@ -173,14 +186,22 @@ module mandel_display #(
         end
     endfunction
 
+    // 디버그 값은 clk_core 쪽에서 온다. 천천히 바뀌는 상태라 2FF 만 (여러 비트가 한 순간 섞여도 다음 줄에 바로잡힘)
+    reg [23:0] dbg_m, dbg_s;
+    always @(posedge clk) begin
+        dbg_m <= dbg;
+        dbg_s <= dbg_m;
+    end
+
     // ---- 1 ------------------------------------------------------------------
-    wire        line = (y >= TY + LH);
+    wire [1:0]  line = (y >= TY + 2 * LH) ? 2'd2 : (y >= TY + LH) ? 2'd1 : 2'd0;
     wire [11:0] tx = x - TX;
-    wire [11:0] ty = y - (line ? TY + LH : TY);
+    wire [11:0] ty = y - (line == 2'd2 ? TY + 2 * LH : line == 2'd1 ? TY + LH : TY);
     reg  [1:0]  lane1;
     reg  [3:0]  col1;
     reg  [2:0]  gx1, gy1;
-    reg         line1, in_text1, in_box1;
+    reg  [1:0]  line1;
+    reg         in_text1, in_box1;
 
     always @(posedge clk) begin
         lb_addr  <= {y[0], x[9:2]};
@@ -190,7 +211,8 @@ module mandel_display #(
         gy1      <= ty[3:1];
         line1    <= line;
         in_text1 <= (x >= TX) && (x < TX + NCHAR * 16) &&
-                    (((y >= TY) && (y < TY + 16)) || ((y >= TY + LH) && (y < TY + LH + 16)));
+                    (((y >= TY) && (y < TY + 16)) || ((y >= TY + LH) && (y < TY + LH + 16)) ||
+                     ((y >= TY + 2 * LH) && (y < TY + 2 * LH + 16)));
         in_box1  <= (x >= BX0) && (x < BX1) && (y >= BY0) && (y < BY1);
     end
 
@@ -212,7 +234,7 @@ module mandel_display #(
     reg [2:0] gx2;
     reg       in_text2, in_box2;
     always @(posedge clk) begin
-        row2     <= glyph(char_at(line1, col1, perf_bcd, fps_bcd), gy1);
+        row2     <= glyph(char_at(line1, col1, perf_bcd, fps_bcd, dbg_s), gy1);
         gx2      <= gx1;
         in_text2 <= in_text1;
         in_box2  <= in_box1;

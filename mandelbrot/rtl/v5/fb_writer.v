@@ -38,6 +38,8 @@ module fb_writer #(
     input  wire [7:0]    pix_data,
     output reg  [PW-1:0] pix_limit,
     output reg           flushed,            // 마지막 줄까지 MCB 에 넘겼음
+    output wire [2:0]    dbg_xs,             // 디버그: 내보내기 상태
+    output wire [9:0]    dbg_line,           //         가장 오래된 줄
     // MCB 포트 (쓰기만 사용)
     output reg           cmd_en,
     output wire [2:0]    cmd_instr,
@@ -130,6 +132,8 @@ module fb_writer #(
     reg [3:0]  done_wait;
     reg [7:0]  q0, q1, q2, q3;
     wire [3:0] lo_slot = lo_line[3:0];
+    assign dbg_xs   = xs;
+    assign dbg_line = lo_line;
     wire       line_full = (cnt[lo_slot] == FB_W);
 
     always @(posedge clk) begin

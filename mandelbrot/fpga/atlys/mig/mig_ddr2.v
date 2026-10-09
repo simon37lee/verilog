@@ -123,6 +123,7 @@ module mig_ddr2 #
    input                                            c3_drp_clk_in,
    input                                            c3_pll_locked,
    input                                            c3_sys_rst,
+   output                                           c3_bufpll_lock_o,   // 디버그: BUFPLL_MCB 잠금
    output                                           c3_calib_done,
    inout                                            mcb3_dram_dqs,
    inout                                            mcb3_dram_dqs_n,
@@ -420,6 +421,7 @@ assign  c3_sys_clk_n = 1'b0;
          .LOCK          (c3_bufpll_locked)
       );
       assign c3_pll_lock = c3_bufpll_locked;
+      assign c3_bufpll_lock_o = c3_bufpll_locked;
 
       reg c3_powerup_locked = 1'b0;
       always @(posedge c3_mcb_drp_clk or posedge c3_sys_rst)
