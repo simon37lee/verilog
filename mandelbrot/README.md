@@ -173,8 +173,14 @@ v4: max_iter 1023, 확대 2^19 배까지라서 다른 조건. v5 는 픽셀이 6
 ```
 - **DDR2 컨트롤러**: Spartan-6 의 MCB 를 MIG 3.92 로 만들었다 (`fpga/atlys/mig/`, 생성 설정 `mig/mig.prj`.
   coregen 명령행 `coregen -b mig_ddr2.xco` 로 생성. Atlys 설정은 PoC 라이브러리의 mig_Atlys_1x128 을 참고).
-  32 비트 포트 2 개: 포트 0 = 쓰기 (clk_core), 포트 1 = 읽기 (clk_pix). MIG 의 자체 PLL 은 빼고 PLL 하나로 모든
-  클럭을 만든다 (VCO 1000 MHz: MCB 500 MHz x2, TMDS 200, 픽셀 40, MCB 보정 62.5, 연산 142.9)
+  32 비트 포트 2 개: 포트 0 = 쓰기 (clk_core), 포트 1 = 읽기 (clk_pix). DDR2 300 MHz.
+  클럭: MIG 의 PLL (보드 100 MHz -> VCO 600 MHz) 이 MCB 클럭과 사용자 클럭 100 MHz 를 만들고, 그 100 MHz 를 받는
+  두 번째 PLL (VCO 1000 MHz) 이 TMDS 200, 픽셀 40, 연산 142.9 MHz 를 만든다
+- **보드에서 DDR2 보정이 안 끝났던 일**: 처음에는 MIG 의 PLL 을 빼고 PLL 하나로 MCB 클럭까지 만들었다. 시뮬레이션과
+  타이밍은 통과했고 BUFPLL_MCB 도 잠겼는데 calib_done 이 끝내 안 올라왔다 (250 / 300 MHz 둘 다).
+  MIG 예제 설계 (`fpga/atlys/ddr_test`, 트래픽 생성기로 쓰고 읽어 비교) 는 같은 보드에서 정상이어서, MIG 의 클럭
+  구성을 그대로 쓰고 나머지 클럭을 뒤에 붙였다. 디버그용으로 화면 셋째 줄 (렌더러 상태, 쓰기 상태, 쓰는 줄, MCB 플래그),
+  LED6 (BUFPLL_MCB 잠금), LED7 (보정 완료) 을 남겨 두었다
 - **쓰기 (fb_writer)**: 엔진 결과는 픽셀 번호가 뒤섞여 나오므로 칩 안 줄 버퍼 16 줄에 모은다. 가장 오래된 줄이
   800 픽셀 다 차면 40 워드 버스트 5 번으로 DDR2 에 쓴다. 엔진 생성기는 `pix_limit` (가장 오래된 줄 + 16 줄) 앞까지만
   픽셀을 만들어서 줄 버퍼가 넘칠 수 없다 (쓰기 쪽을 멈추는 장치 없이). 줄 번호는 `(off * 5243) >> 22` (DSP 1 개)

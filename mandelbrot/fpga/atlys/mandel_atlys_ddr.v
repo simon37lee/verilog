@@ -1,20 +1,18 @@
 // ---------------------------------------------------------------------------
 // mandel_atlys (v5, mandel_atlys_ddr.v) : Digilent Atlys 최상위 - 800x600 HDMI + DDR2 프레임버퍼
 //
-//   100 MHz 오실레이터 -> PLL_BASE 하나 (VCO 1000 MHz) 로 모든 클럭
-//     CLKOUT0 /2  = 500 MHz       DDR2 컨트롤러 (MCB) 2x 클럭 -> BUFPLL_MCB (DDR2 250 MHz = 500 Mbps)
-//     CLKOUT1 /2  = 500 MHz 180°  MCB 2x 반대 위상
-//     CLKOUT2 /25 =  40 MHz       픽셀 클럭 (800x600 @ 60 Hz)
-//     CLKOUT3 /5  = 200 MHz       TMDS 직렬화 (DDR, 픽셀 x5). ODDR2 의 두 번째 클럭은 이 클럭을 뒤집어서
-//     CLKOUT4 /16 = 62.5 MHz      MCB 보정 / DRP 클럭 (2x / 8, MIG 기본 비율)
-//     CLKOUT5 /CORE_DIV           연산 클럭 (clk_core, 7 = 142.9 MHz)
-//   v1~v4 (mandel_atlys.v) 는 125 MHz 와 그 180° 를 따로 만들었는데, MCB 가 PLL 출력 0 / 1 을 써야 해서
-//   출력 6 개가 모자라 180° 쪽을 뺐다.
+//   클럭 (PLL 2 개)
+//     MIG (fpga/atlys/mig/infrastructure.v) : 보드 100 MHz -> VCO 600 MHz
+//         DDR2 컨트롤러 (MCB) 600 MHz x2 (DDR2 300 MHz), 보정 75 MHz, 사용자 클럭 c3_clk0 = 100 MHz
+//     u_pll : c3_clk0 (100 MHz) -> VCO 1000 MHz
+//         CLKOUT0 /5  = 200 MHz      TMDS 직렬화 (DDR, 픽셀 x5). ODDR2 의 두 번째 클럭은 이 클럭을 뒤집어서
+//         CLKOUT1 /25 =  40 MHz      픽셀 클럭 (800x600 @ 60 Hz)
+//         CLKOUT2 /CORE_DIV          연산 클럭 (clk_core, 7 = 142.9 MHz)
+//   처음에는 PLL 하나로 MCB 클럭까지 만들었는데 (MIG 의 PLL 을 빼고) DDR2 보정이 끝나지 않았다.
+//   MIG 예제 설계 (fpga/atlys/ddr_test) 는 같은 보드에서 정상이어서 MIG 의 클럭 구성을 그대로 쓰고
+//   나머지 클럭은 그 뒤에 PLL 을 하나 더 두어 만든다.
 //
-//   DDR2: MIG 3.92 로 만든 컨트롤러 (fpga/atlys/mig/, 32 비트 포트 0 = 쓰기 clk_core, 1 = 읽기 clk_pix)
-//
-//   DEFS=DDR600 : DDR2 를 300 MHz (MCB 2x = 600 MHz) 로. PoC 라이브러리의 Atlys MIG 설정과 같은 주파수.
-//                 VCO 600 MHz 로 바뀌어서 픽셀 /15, TMDS /3, 보정 /8 = 75 MHz, 연산 /5 = 120 MHz (CORE_DIV 무시)
+//   DDR2: 32 비트 포트 0 = 쓰기 (clk_core), 1 = 읽기 (clk_pix)
 //
 //   LED: [0] PLL lock  [1] RESET 버튼  [2]/[3] core/pix 클럭 깜빡임  [4] vsync  [5] 렌더 프레임
 //        [6] MCB 클럭 버퍼 (BUFPLL_MCB) 잠금  [7] DDR2 보정 완료 (calib_done)
@@ -57,56 +55,34 @@ module mandel_atlys #(
     output wire        mcb3_dram_ck_n,
     inout  wire        mcb3_rzq
 );
-`ifdef DDR600
-    localparam CORE_HZ = 120000000;
-`else
     localparam CORE_HZ = 1000000000 / CORE_DIV;
-`endif
 
-    // ---- 클럭 생성 ---------------------------------------------------------
-    wire clk_in;
-    IBUFG u_ibufg (.I(clk_100m), .O(clk_in));
-
+    // ---- 클럭 생성 (MIG 뒤의 두 번째 PLL) ------------------------------------------
+    wire c3_clk0, c3_rst0;                  // MIG 사용자 클럭 100 MHz (BUFG), 그 리셋
     wire clkfb, pll_locked;
-    wire clk_2x_unbuf, clk_2x_180_unbuf, clk_pix_unbuf, clk_x5_unbuf, clk_drp_unbuf, clk_core_unbuf;
+    wire clk_x5_unbuf, clk_pix_unbuf, clk_core_unbuf;
 
-`ifdef DDR600
-    PLL_BASE #(
-        .CLKIN_PERIOD   (10.0),
-        .DIVCLK_DIVIDE  (1),
-        .CLKFBOUT_MULT  (6),        // VCO 600 MHz
-        .CLKOUT0_DIVIDE (1),   .CLKOUT0_PHASE (0.0),     // 600 MHz (MCB)
-        .CLKOUT1_DIVIDE (1),   .CLKOUT1_PHASE (180.0),   // 600 MHz 180° (MCB)
-        .CLKOUT2_DIVIDE (15),                            //  40 MHz
-        .CLKOUT3_DIVIDE (3),                             // 200 MHz
-        .CLKOUT4_DIVIDE (8),                             //  75 MHz
-        .CLKOUT5_DIVIDE (5),                             // 120 MHz clk_core
-`else
     PLL_BASE #(
         .CLKIN_PERIOD   (10.0),
         .DIVCLK_DIVIDE  (1),
         .CLKFBOUT_MULT  (10),       // VCO 1000 MHz
-        .CLKOUT0_DIVIDE (2),   .CLKOUT0_PHASE (0.0),     // 500 MHz (MCB)
-        .CLKOUT1_DIVIDE (2),   .CLKOUT1_PHASE (180.0),   // 500 MHz 180° (MCB)
-        .CLKOUT2_DIVIDE (25),                            //  40 MHz
-        .CLKOUT3_DIVIDE (5),                             // 200 MHz
-        .CLKOUT4_DIVIDE (16),                            // 62.5 MHz
-        .CLKOUT5_DIVIDE (CORE_DIV),                      // clk_core
-`endif
+        .CLKOUT0_DIVIDE (5),                             // 200 MHz
+        .CLKOUT1_DIVIDE (25),                            //  40 MHz
+        .CLKOUT2_DIVIDE (CORE_DIV),                      // clk_core
         .CLK_FEEDBACK   ("CLKFBOUT"),
         .COMPENSATION   ("INTERNAL")
     ) u_pll (
-        .CLKIN    (clk_in),
+        .CLKIN    (c3_clk0),
         .CLKFBIN  (clkfb),
         .CLKFBOUT (clkfb),
-        .CLKOUT0  (clk_2x_unbuf),
-        .CLKOUT1  (clk_2x_180_unbuf),
-        .CLKOUT2  (clk_pix_unbuf),
-        .CLKOUT3  (clk_x5_unbuf),
-        .CLKOUT4  (clk_drp_unbuf),
-        .CLKOUT5  (clk_core_unbuf),
+        .CLKOUT0  (clk_x5_unbuf),
+        .CLKOUT1  (clk_pix_unbuf),
+        .CLKOUT2  (clk_core_unbuf),
+        .CLKOUT3  (),
+        .CLKOUT4  (),
+        .CLKOUT5  (),
         .LOCKED   (pll_locked),
-        .RST      (1'b0)
+        .RST      (c3_rst0)
     );
 
     wire clk_x5, clk_pix, clk_core;
@@ -129,11 +105,7 @@ module mandel_atlys #(
     wire [31:0] p1_rd_data;
 
     wire bufpll_lock;
-`ifdef DDR600
-    mig_ddr2 #(.C3_MEMCLK_PERIOD(3333)) u_mig (
-`else
     mig_ddr2 u_mig (
-`endif
         .mcb3_dram_dq(mcb3_dram_dq), .mcb3_dram_a(mcb3_dram_a), .mcb3_dram_ba(mcb3_dram_ba),
         .mcb3_dram_ras_n(mcb3_dram_ras_n), .mcb3_dram_cas_n(mcb3_dram_cas_n), .mcb3_dram_we_n(mcb3_dram_we_n),
         .mcb3_dram_odt(mcb3_dram_odt), .mcb3_dram_cke(mcb3_dram_cke),
@@ -141,8 +113,8 @@ module mandel_atlys #(
         .mcb3_dram_udqs(mcb3_dram_udqs), .mcb3_dram_udqs_n(mcb3_dram_udqs_n),
         .mcb3_dram_dqs(mcb3_dram_dqs), .mcb3_dram_dqs_n(mcb3_dram_dqs_n),
         .mcb3_dram_ck(mcb3_dram_ck), .mcb3_dram_ck_n(mcb3_dram_ck_n), .mcb3_rzq(mcb3_rzq),
-        .c3_clk_2x(clk_2x_unbuf), .c3_clk_2x_180(clk_2x_180_unbuf), .c3_drp_clk_in(clk_drp_unbuf),
-        .c3_pll_locked(pll_locked), .c3_sys_rst(1'b0), .c3_bufpll_lock_o(bufpll_lock),
+        .c3_sys_clk(clk_100m), .c3_sys_rst_i(1'b0),
+        .c3_clk0(c3_clk0), .c3_rst0(c3_rst0), .c3_bufpll_lock_o(bufpll_lock),
         .c3_calib_done(calib_done),
         // 포트 0: 쓰기 (clk_core)
         .c3_p0_cmd_clk(clk_core), .c3_p0_cmd_en(p0_cmd_en), .c3_p0_cmd_instr(p0_cmd_instr),

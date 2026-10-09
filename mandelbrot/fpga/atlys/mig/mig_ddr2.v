@@ -66,9 +66,14 @@
 //*****************************************************************************
 `timescale 1ns/1ps
 
-(* X_CORE_INFO = "mig_v3_92_ddr2_ddr2_s6, Coregen 14.7" , CORE_GENERATION_INFO = "ddr2_ddr2_s6,mig_v3_92,{component_name=mig_ddr2, C3_MEM_INTERFACE_TYPE=DDR2_SDRAM, C3_CLK_PERIOD=4000, C3_MEMORY_PART=mt47h64m16xx-25e, C3_MEMORY_DEVICE_WIDTH=16, C3_OUTPUT_DRV=FULL, C3_RTT_NOM=50OHMS, C3_DQS#_ENABLE=YES, C3_HIGH_TEMP_SR=NORMAL, C3_PORT_CONFIG=Four 32-bit bi-directional ports, C3_MEM_ADDR_ORDER=ROW_BANK_COLUMN, C3_PORT_ENABLE=Port0_Port1, C3_CLASS_ADDR=II, C3_CLASS_DATA=II, C3_INPUT_PIN_TERMINATION=EXTERN_TERM, C3_DATA_TERMINATION=25 Ohms, C3_CLKFBOUT_MULT_F=2, C3_CLKOUT_DIVIDE=1, C3_DEBUG_PORT=0, INPUT_CLK_TYPE=Single-Ended, LANGUAGE=Verilog, SYNTHESIS_TOOL=Foundation_ISE, NO_OF_CONTROLLERS=1}" *)
-// mandelbrot v5: MIG 3.92 가 만든 mig_ddr2.v 에서 infrastructure (자체 PLL) 를 빼고 바깥 클럭을 받게 고침
-//   생성 설정: mig.prj (Atlys MT47H64M16-25E, 4000 ps = DDR2 250 MHz, 32 비트 포트 4 개 중 0, 1 사용)
+(* X_CORE_INFO = "mig_v3_92_ddr2_ddr2_s6, Coregen 14.7" , CORE_GENERATION_INFO = "ddr2_ddr2_s6,mig_v3_92,{component_name=mig_ddr2, C3_MEM_INTERFACE_TYPE=DDR2_SDRAM, C3_CLK_PERIOD=3333, C3_MEMORY_PART=mt47h64m16xx-25e, C3_MEMORY_DEVICE_WIDTH=16, C3_OUTPUT_DRV=FULL, C3_RTT_NOM=50OHMS, C3_DQS#_ENABLE=YES, C3_HIGH_TEMP_SR=NORMAL, C3_PORT_CONFIG=Four 32-bit bi-directional ports, C3_MEM_ADDR_ORDER=ROW_BANK_COLUMN, C3_PORT_ENABLE=Port0_Port1, C3_CLASS_ADDR=II, C3_CLASS_DATA=II, C3_INPUT_PIN_TERMINATION=EXTERN_TERM, C3_DATA_TERMINATION=25 Ohms, C3_CLKFBOUT_MULT_F=2, C3_CLKOUT_DIVIDE=1, C3_DEBUG_PORT=0, INPUT_CLK_TYPE=Single-Ended, LANGUAGE=Verilog, SYNTHESIS_TOOL=Foundation_ISE, NO_OF_CONTROLLERS=1}" *)
+// mandelbrot v5: MIG 3.92 가 만든 mig_ddr2.v (생성 설정 mig.prj: Atlys MT47H64M16-25E, 3333 ps = DDR2 300 MHz,
+//   32 비트 포트 4 개 중 0, 1 사용). 바꾼 곳은 아래 둘뿐 (MIG 예제 설계를 Atlys 에서 돌려 보고 같은 구성으로 맞춤):
+//     - 입력 클럭이 보드 100 MHz 라서 C3_CLKFBOUT_MULT = 6 (VCO 600 MHz), 사용자 클럭 c3_clk0 = 600 / 6 = 100 MHz
+//       (PoC 라이브러리 mig_Atlys_1x128 과 같은 방법). c3_clk0 은 최상위의 두 번째 PLL 입력으로 쓴다
+//     - 디버그용 c3_bufpll_lock_o 출력 (BUFPLL_MCB 잠금)
+//   처음에는 infrastructure (MIG 의 PLL) 를 빼고 최상위 PLL 하나로 MCB 클럭까지 만들었는데, BUFPLL_MCB 는 잠겨도
+//   보정 (calib_done) 이 끝나지 않았다. MIG 예제 설계는 같은 보드에서 정상이었다
 module mig_ddr2 #
 (
    parameter C3_P0_MASK_SIZE           = 4,
@@ -78,7 +83,7 @@ module mig_ddr2 #
    parameter DEBUG_EN                = 0,       
                                        // # = 1, Enable debug signals/controls,
                                        //   = 0, Disable debug signals/controls.
-   parameter C3_MEMCLK_PERIOD        = 4000,       
+   parameter C3_MEMCLK_PERIOD        = 3333,       
                                        // Memory data transfer clock period
    parameter C3_CALIB_SOFT_IP        = "TRUE",       
                                        // # = TRUE, Enables the soft calibration logic,
@@ -117,14 +122,12 @@ module mig_ddr2 #
    inout                                            mcb3_dram_udqs_n,
    inout                                            mcb3_rzq,
    output                                           mcb3_dram_udm,
-   // 클럭은 바깥 PLL 에서 (mandel_atlys_ddr.v): 2x = 500 MHz, 2x_180, drp = 62.5 MHz (2x / 8)
-   input                                            c3_clk_2x,
-   input                                            c3_clk_2x_180,
-   input                                            c3_drp_clk_in,
-   input                                            c3_pll_locked,
-   input                                            c3_sys_rst,
-   output                                           c3_bufpll_lock_o,   // 디버그: BUFPLL_MCB 잠금
+   input                                            c3_sys_clk,
+   input                                            c3_sys_rst_i,
    output                                           c3_calib_done,
+   output                                           c3_clk0,
+   output                                           c3_rst0,
+   output                                           c3_bufpll_lock_o,
    inout                                            mcb3_dram_dqs,
    inout                                            mcb3_dram_dqs_n,
    output                                           mcb3_dram_ck,
@@ -190,9 +193,9 @@ module mig_ddr2 #
    localparam C3_PORT_CONFIG             =  "B32_B32_B32_B32";
    localparam C3_CLKOUT0_DIVIDE       = 1;       
    localparam C3_CLKOUT1_DIVIDE       = 1;       
-   localparam C3_CLKOUT2_DIVIDE       = 16;       
+   localparam C3_CLKOUT2_DIVIDE       = 6;        // c3_clk0 = 100 MHz       
    localparam C3_CLKOUT3_DIVIDE       = 8;       
-   localparam C3_CLKFBOUT_MULT        = 2;       
+   localparam C3_CLKFBOUT_MULT        = 6;        // 100 MHz 입력 -> VCO 600 MHz       
    localparam C3_DIVCLK_DIVIDE        = 1;       
    localparam C3_ARB_ALGORITHM        = 0;       
    localparam C3_ARB_NUM_TIME_SLOTS   = 12;       
@@ -287,6 +290,7 @@ module mig_ddr2 #
   wire                              c3_pll_ce_90;
   wire                              c3_pll_lock;
   wire                              c3_mcb_drp_clk;
+  assign c3_bufpll_lock_o = c3_pll_lock;
   wire                              c3_cmp_error;
   wire                              c3_cmp_data_valid;
   wire                              c3_vio_modify_enable;
@@ -405,31 +409,34 @@ assign  c3_sys_clk_n = 1'b0;
 
 
 // Infrastructure-3 instantiation
-      // ---- infrastructure.v 대신: 바깥 PLL 출력을 MCB 로 (MIG 의 infrastructure 와 같은 연결) ----
-      BUFGCE u_bufg_drp (.O(c3_mcb_drp_clk), .I(c3_drp_clk_in), .CE(c3_pll_locked));
-
-      wire c3_bufpll_locked;
-      BUFPLL_MCB u_bufpll_mcb (
-         .IOCLK0        (c3_sysclk_2x),
-         .IOCLK1        (c3_sysclk_2x_180),
-         .LOCKED        (c3_pll_locked),
-         .GCLK          (c3_mcb_drp_clk),
-         .SERDESSTROBE0 (c3_pll_ce_0),
-         .SERDESSTROBE1 (c3_pll_ce_90),
-         .PLLIN0        (c3_clk_2x),
-         .PLLIN1        (c3_clk_2x_180),
-         .LOCK          (c3_bufpll_locked)
+      infrastructure #
+      (
+         .C_INCLK_PERIOD                 (C3_INCLK_PERIOD),
+         .C_RST_ACT_LOW                  (C3_RST_ACT_LOW),
+         .C_INPUT_CLK_TYPE               (C3_INPUT_CLK_TYPE),
+         .C_CLKOUT0_DIVIDE               (C3_CLKOUT0_DIVIDE),
+         .C_CLKOUT1_DIVIDE               (C3_CLKOUT1_DIVIDE),
+         .C_CLKOUT2_DIVIDE               (C3_CLKOUT2_DIVIDE),
+         .C_CLKOUT3_DIVIDE               (C3_CLKOUT3_DIVIDE),
+         .C_CLKFBOUT_MULT                (C3_CLKFBOUT_MULT),
+         .C_DIVCLK_DIVIDE                (C3_DIVCLK_DIVIDE)
+      )
+      memc3_infrastructure_inst
+      (
+         .sys_clk_p                      (c3_sys_clk_p),  // [input] differential p type clock from board
+         .sys_clk_n                      (c3_sys_clk_n),  // [input] differential n type clock from board
+         .sys_clk                        (c3_sys_clk),    // [input] single ended input clock from board
+         .sys_rst_i                      (c3_sys_rst_i),  
+         .clk0                           (c3_clk0),       // [output] user clock which determines the operating frequency of user interface ports
+         .rst0                           (c3_rst0),
+         .async_rst                      (c3_async_rst),
+         .sysclk_2x                      (c3_sysclk_2x),
+         .sysclk_2x_180                  (c3_sysclk_2x_180),
+         .pll_ce_0                       (c3_pll_ce_0),
+         .pll_ce_90                      (c3_pll_ce_90),
+         .pll_lock                       (c3_pll_lock),
+         .mcb_drp_clk                    (c3_mcb_drp_clk)
       );
-      assign c3_pll_lock = c3_bufpll_locked;
-      assign c3_bufpll_lock_o = c3_bufpll_locked;
-
-      reg c3_powerup_locked = 1'b0;
-      always @(posedge c3_mcb_drp_clk or posedge c3_sys_rst)
-         if (c3_sys_rst)            c3_powerup_locked <= 1'b0;
-         else if (c3_bufpll_locked) c3_powerup_locked <= 1'b1;
-      assign c3_async_rst = c3_sys_rst | ~c3_powerup_locked;
-      wire mcb3_zio;                                 // 보정 생략 설정이라 쓰지 않음
-
    
 
 
