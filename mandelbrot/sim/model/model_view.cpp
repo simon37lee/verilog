@@ -11,7 +11,7 @@
 //         (기본 화면에서 v3 +15 %, v4 +6 %). 화면은 FPGA 처럼 60 fps 가 상한 (더블 버퍼 + vsync)
 //         --no-pace 면 CPU 가 계산할 수 있는 만큼 빨리
 //
-//   옵션: --scale N (기본 2 = 640x480), --threads N, --no-pace, --manual, --sw-iter N,
+//   옵션: --scale N (기본 320x240 은 2, 그 이상은 1), --threads N, --no-pace, --manual, --sw-iter N,
 //         --frames N (렌더 N 프레임 후 종료), --dump F.bmp (종료할 때 화면 저장)
 //   조작: M 자동 데모 / 수동,  (수동) 화살표 이동 Z 확대 X 축소,  1~4 max_iter,
 //         P 속도 맞춤 켜기/끄기, R 처음 화면, SPACE 일시정지, S 스크린샷, ESC 종료
@@ -47,24 +47,6 @@ using Clock = std::chrono::steady_clock;
 
 namespace {
 
-// rtl/common/palette_rom.v 의 "8'dN: rgb <= 24'hRRGGBB;" 줄을 읽는다 (팔레트를 한 곳에서만 관리)
-bool load_palette(const char* path, uint32_t pal[256]) {
-    FILE* f = fopen(path, "r");
-    if (!f) return false;
-    char line[256];
-    int  found = 0;
-    while (fgets(line, sizeof line, f)) {
-        unsigned idx, rgb;
-        const char* p = strstr(line, "8'd");
-        if (p && sscanf(p, "8'd%u: rgb <= 24'h%x;", &idx, &rgb) == 2 && idx < 256) {
-            pal[idx] = 0xFF000000u | rgb;
-            found++;
-        }
-    }
-    fclose(f);
-    return found == 256;
-}
-
 // 한 프레임 계산: 줄 단위로 스레드에 나눠 준다. 반환 = 총 반복 (탈출 판정) 횟수
 uint64_t render(const View& v, int max_iter, int nthreads, std::vector<uint8_t>& fb) {
     const int64_t x0 = v.x0(), top = v.top(), step = v.step;
@@ -91,7 +73,7 @@ uint64_t render(const View& v, int max_iter, int nthreads, std::vector<uint8_t>&
 }  // namespace
 
 int main(int argc, char** argv) {
-    int   scale = 2, nthreads = (int)std::max(1u, std::thread::hardware_concurrency());
+    int   scale = FB_W >= 640 ? 1 : 2, nthreads = (int)std::max(1u, std::thread::hardware_concurrency());
     bool  pace = true, manual = false;
     int   sw_iter = 0;
     long  max_frames = -1;

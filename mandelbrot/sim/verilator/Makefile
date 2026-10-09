@@ -23,7 +23,18 @@ include $(RTL_DIR)/v$(V)/config.mk
 CORE_HZ  = $(shell echo $$((1000000000 / $(CORE_DIV))))
 VERSIONS = $(shell ls -d $(RTL_DIR)/v*/ | sed 's|.*/v\([0-9]*\)/|\1|' | sort -n)
 
-RTL = $(wildcard $(RTL_DIR)/common/*.v) $(wildcard $(RTL_DIR)/v$(V)/*.v)
+# 버전 폴더에 공통 파일과 같은 이름이 있으면 그것으로 바꾼다 (v5 는 화면 / 프레임버퍼까지 바뀜)
+# rtl/vN/sim/*.v 는 시뮬레이션에만 쓰는 파일 (v5: DDR2 컨트롤러 동작 모델과 그것을 붙인 최상위)
+VER_RTL = $(wildcard $(RTL_DIR)/v$(V)/*.v)
+RTL = $(filter-out $(addprefix $(RTL_DIR)/common/,$(notdir $(VER_RTL))),$(wildcard $(RTL_DIR)/common/*.v)) \
+      $(VER_RTL) $(wildcard $(RTL_DIR)/v$(V)/sim/*.v)
+
+# 버전별 화면 / 프레임버퍼 크기와 시뮬레이션 최상위 (config.mk 에 없으면 v1~v4 값)
+SIM_TOP    ?= mandel_system
+FB_W       ?= 320
+FB_H       ?= 240
+PIX_DIV    ?= 40
+FRAME_CLKS ?= 420000
 
 IW   ?= 8
 DEFS ?=
@@ -41,9 +52,9 @@ all: $(BIN)
 $(BIN): $(RTL) $(RTL_DIR)/v$(V)/config.mk vmon_mandel.cpp ../model/mandel_model.h Makefile
 	$(VERILATOR) --cc --exe -O3 --x-assign fast --x-initial fast \
 	    -Wno-fatal -Wno-WIDTH \
-	    --top-module mandel_system -GW=$(W) -GIW=$(IW) -GCORE_HZ=$(CORE_HZ) -GVERSION=$(V) $(addprefix -D,$(DEFS)) \
+	    --top-module $(SIM_TOP) --prefix Vmandel_system -GW=$(W) -GIW=$(IW) -GCORE_HZ=$(CORE_HZ) -GVERSION=$(V) $(addprefix -D,$(DEFS)) \
 	    --clk clk_pix --clk clk_core \
-	    -CFLAGS "-std=c++14 -I$(abspath ../model) -DMANDEL_W=$(W) -DMANDEL_IW=$(IW) -DMANDEL_VERSION=$(V) -DMANDEL_CORE_DIV=$(CORE_DIV) $(shell $(SDL2_CONFIG) --cflags)" \
+	    -CFLAGS "-std=c++14 -I$(abspath ../model) -DMANDEL_W=$(W) -DMANDEL_IW=$(IW) -DMANDEL_FB_W=$(FB_W) -DMANDEL_FB_H=$(FB_H) -DMANDEL_PIX_DIV=$(PIX_DIV) -DMANDEL_FRAME_CLKS=$(FRAME_CLKS) -DMANDEL_PALETTE='\"$(abspath $(RTL_DIR)/common/palette_rom.v)\"' $(if $(filter-out mandel_system,$(SIM_TOP)),-DMANDEL_SIM_DDR) -DMANDEL_VERSION=$(V) -DMANDEL_CORE_DIV=$(CORE_DIV) $(shell $(SDL2_CONFIG) --cflags)" \
 	    -LDFLAGS "$(shell $(SDL2_CONFIG) --libs)" \
 	    --Mdir $(MDIR) $(RTL) vmon_mandel.cpp
 	$(MAKE) -C $(MDIR) -f Vmandel_system.mk -j $(OPT)

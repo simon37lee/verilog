@@ -9,6 +9,8 @@
 //   검사 (--check): 리셋 직후 첫 렌더 프레임에서 프레임버퍼에 쓰는 값을 모두 가로채서
 //   같은 고정소수점 연산을 하는 C++ 모델과 비트 단위로 비교한다 (W 는 빌드 때 -DMANDEL_W 로 맞춤).
 //   렌더 시간, 평균 반복 횟수, 반복/초, 픽셀당 오버헤드 클럭도 보고한다.
+//   화면 검사: 끝날 때 모니터가 받은 화면이 모델 + 팔레트 그림과 같은지도 본다 (왼쪽 위 글자 상자는 빼고).
+//   프레임버퍼 -> (v5 는 DDR2 ->) 화면 경로까지 확인된다.
 //
 //   옵션:
 //     --scale N      창 확대 배율 (기본 1)
@@ -58,13 +60,21 @@ namespace {
 
 constexpr int    MAX_W = 1920;
 constexpr int    MAX_H = 1080;
-constexpr double PIX_HZ = 25e6;
-constexpr double REFRESH_HZ = PIX_HZ / (800.0 * 525.0);
-constexpr int    FB_W = 320, FB_H = 240;
+// 화면 타이밍 (rtl/vN/config.mk 의 PIX_DIV, 화면 한 프레임 클럭 수)
+#ifndef MANDEL_PIX_DIV
+#define MANDEL_PIX_DIV 40
+#endif
+#ifndef MANDEL_FRAME_CLKS
+#define MANDEL_FRAME_CLKS (800 * 525)
+#endif
+constexpr double PIX_HZ = 1e9 / MANDEL_PIX_DIV;
+constexpr double REFRESH_HZ = PIX_HZ / (MANDEL_FRAME_CLKS);
+constexpr int    FB_W = mandel::FB_W, FB_H = mandel::FB_H;
 
 // ---- 고정소수점 기준 모델: ../model/mandel_model.h (실시간 뷰어와 같이 쓴다) ---------
 struct Model {
     static int fold(int n) { return mandel::fold(n); }
+    static int value(int px, int py, int max_iter) { return fold(pixel(px, py, max_iter)); }
     // 리셋 직후 기본 보기 영역에서 (px, py) 의 반복 횟수 (안쪽 = 0)
     static int pixel(int px, int py, int max_iter) {
         const mandel::View v;
@@ -105,6 +115,28 @@ struct Monitor {
         return frame_done;
     }
 };
+
+// 화면 검사: 모니터가 받은 마지막 화면 (FB_W x FB_H 를 정수배 확대) 을 프레임버퍼 값 + 팔레트와 비교.
+// 왼쪽 위 글자 상자 (200 x 60) 는 뺀다. 반환: 다른 픽셀 수 (화면을 못 받았으면 -1)
+long screen_compare(const Monitor& m, const std::vector<int>& fbv, const uint32_t pal[256], long& checked) {
+    checked = 0;
+    if (m.width < FB_W || m.height < FB_H) return -1;
+    const int sx_scale = m.width / FB_W, sy_scale = m.height / FB_H;
+    long bad = 0;
+    for (int sy = 0; sy < FB_H * sy_scale; sy++)
+        for (int sx = 0; sx < FB_W * sx_scale; sx++) {
+            if (sx < 200 && sy < 60) continue;
+            const int v = fbv[(sy / sy_scale) * FB_W + sx / sx_scale];
+            if (v < 0) continue;
+            const uint32_t want = pal[v] & 0xFFFFFF, got = m.fb[sy * MAX_W + sx] & 0xFFFFFF;
+            checked++;
+            if (want != got) {
+                if (bad < 5) printf("  screen mismatch (%d,%d): got %06X want %06X\n", sx, sy, got, want);
+                bad++;
+            }
+        }
+    return bad;
+}
 
 void save_bmp(const Monitor& m, const char* name) {
     SDL_Surface* s = SDL_CreateRGBSurfaceWithFormatFrom(
@@ -198,7 +230,7 @@ int main(int argc, char** argv) {
     //   올라가기 전에 그 클럭의 0 이 한 번은 eval() 로 관측되어야 한다 (dma_display 와 같은 방식).
     enum { PIX = 0, CORE = 1, NCLK = 2 };
     CData*  sig[NCLK]  = {&dut->clk_pix, &dut->clk_core};
-    int64_t half[NCLK] = {20000, (int64_t)(5e5 / core_mhz + 0.5)};
+    int64_t half[NCLK] = {MANDEL_PIX_DIV * 500, (int64_t)(5e5 / core_mhz + 0.5)};
     int64_t rise_ps[NCLK], last_rise_ps[NCLK], last_eval_ps = 0, now_ps = 0;
     for (int i = 0; i < NCLK; i++) {
         rise_ps[i]      = half[i];
@@ -370,17 +402,29 @@ int main(int argc, char** argv) {
             printf("model: %llu iterations, avg %.1f per pixel\n", (unsigned long long)iters, iters / npix);
             printf("hw   : %.2f ms @ %.0f MHz = %.0f cycles -> %.2f M iter/s, %.2f cycles/pixel overhead\n",
                    ms, core_mhz, cycles, ms > 0 ? iters / (ms * 1e3) : 0.0, (cycles - iters) / npix);
-            const bool ok = !bad && chk.writes == FB_W * FB_H && !chk.dup;
+            // 화면 경로 (프레임버퍼 -> 화면) 검사
+            uint32_t pal[256];
+            long     scr_checked = 0, scr_bad = -1;
+            if (mandel::load_palette(MANDEL_PALETTE, pal))
+                scr_bad = screen_compare(mon, chk.got, pal, scr_checked);
+            printf("screen: %ld of %ld pixels differ (%dx%d)\n", scr_bad, scr_checked, mon.width, mon.height);
+            bool mem_err = false;
+#ifdef MANDEL_SIM_DDR
+            mem_err = dut->mcb_err;
+            if (mem_err) printf("DDR2 model reported a port protocol error\n");
+#endif
+            const bool ok = !bad && chk.writes == FB_W * FB_H && !chk.dup && scr_bad == 0 && !mem_err;
             // check-all 이 모으는 한 줄 요약
             printf("RESULT v%d: %s  W=%d  max_iter %d  clk_core %.1f MHz  render %.2f ms  %.2f M iter/s  %.2f cycles/iter\n",
                    MANDEL_VERSION, ok ? "PASS" : "FAIL", MANDEL_W, max_iter, core_mhz, ms,
                    ms > 0 ? iters / (ms * 1e3) : 0.0, iters ? cycles / iters : 0.0);
             if (!ok) {
-                printf("CHECK FAIL: %ld mismatches, %ld writes (expected %d), %ld duplicate addresses\n",
-                       bad, chk.writes, FB_W * FB_H, chk.dup);
+                printf("CHECK FAIL: %ld mismatches, %ld writes (expected %d), %ld duplicate addresses, "
+                       "%ld screen mismatches\n", bad, chk.writes, FB_W * FB_H, chk.dup, scr_bad);
                 rc = 1;
             } else {
-                printf("CHECK PASS: all %d pixels match the fixed-point model (W=%d)\n", FB_W * FB_H, MANDEL_W);
+                printf("CHECK PASS: all %d pixels match the fixed-point model (W=%d), screen matches\n",
+                       FB_W * FB_H, MANDEL_W);
             }
         }
     }

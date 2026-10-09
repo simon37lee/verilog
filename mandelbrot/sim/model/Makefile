@@ -12,8 +12,10 @@ V           ?= 4
 
 RTL_DIR = ../../rtl
 include $(RTL_DIR)/v$(V)/config.mk
-IW  ?= 8
-PAR ?= 1
+IW   ?= 8
+PAR  ?= 1
+FB_W ?= 320
+FB_H ?= 240
 
 BIN = obj/model_view_v$(V)_w$(W)_div$(CORE_DIV)
 
@@ -22,7 +24,7 @@ all: $(BIN)
 $(BIN): model_view.cpp mandel_model.h $(RTL_DIR)/v$(V)/config.mk Makefile
 	mkdir -p obj
 	$(CXX) -std=c++14 -O3 -march=native -pthread -Wall \
-	    -DMANDEL_W=$(W) -DMANDEL_IW=$(IW) -DMANDEL_VERSION=$(V) -DMANDEL_CORE_DIV=$(CORE_DIV) -DMANDEL_PAR=$(PAR) \
+	    -DMANDEL_W=$(W) -DMANDEL_IW=$(IW) -DMANDEL_FB_W=$(FB_W) -DMANDEL_FB_H=$(FB_H) -DMANDEL_VERSION=$(V) -DMANDEL_CORE_DIV=$(CORE_DIV) -DMANDEL_PAR=$(PAR) \
 	    -DMANDEL_PALETTE='"$(abspath $(RTL_DIR)/common/palette_rom.v)"' \
 	    $(shell $(SDL2_CONFIG) --cflags) -o $@ model_view.cpp $(shell $(SDL2_CONFIG) --libs)
 

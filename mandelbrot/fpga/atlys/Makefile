@@ -20,10 +20,17 @@ include $(RTL_DIR)/v$(V)/config.mk
 
 IW   ?= 8
 DEFS ?=
+# 버전이 최상위 / 제약 / 추가 소스를 바꿀 수 있다 (v5: mandel_atlys_ddr.v, atlys_ddr.ucf, mig/*.v)
+BOARD_TOP ?= $(TOP).v
+BOARD_UCF ?= atlys.ucf
+BOARD_SRC ?=
 # CORE_DIV 를 명령행에서 바꾸면 다른 디렉터리에 빌드 (make V=4 CORE_DIV=7 -> build/v4_div7/)
 DEFAULT_DIV := $(shell sed -n 's/^CORE_DIV *?= *//p' $(RTL_DIR)/v$(V)/config.mk)
 BUILD = build/v$(V)$(if $(filter-out $(DEFAULT_DIV),$(CORE_DIV)),_div$(CORE_DIV))$(foreach d,$(DEFS),_$(subst =,,$(d)))
-RTL   = $(wildcard $(RTL_DIR)/common/*.v) $(wildcard $(RTL_DIR)/v$(V)/*.v) $(TOP).v
+# 버전 폴더에 공통 파일과 같은 이름이 있으면 그것으로 바꾼다 (rtl/vN/sim/ 은 시뮬레이션 전용이라 뺀다)
+VER_RTL = $(wildcard $(RTL_DIR)/v$(V)/*.v)
+RTL   = $(filter-out $(addprefix $(RTL_DIR)/common/,$(notdir $(VER_RTL))),$(wildcard $(RTL_DIR)/common/*.v)) \
+        $(VER_RTL) $(BOARD_SRC) $(BOARD_TOP)
 CFG   = $(RTL_DIR)/v$(V)/config.mk
 
 all: $(BUILD)/$(TOP).bit
@@ -46,8 +53,8 @@ $(BUILD)/$(TOP).xst: $(CFG) Makefile
 $(BUILD)/$(TOP).ngc: $(BUILD)/$(TOP).prj $(BUILD)/$(TOP).xst
 	cd $(BUILD) && xst -ifn $(TOP).xst -ofn $(TOP).syr
 
-$(BUILD)/$(TOP).ngd: $(BUILD)/$(TOP).ngc atlys.ucf
-	cd $(BUILD) && ngdbuild -dd _ngo -uc ../../atlys.ucf -p $(PART) $(TOP).ngc $(TOP).ngd
+$(BUILD)/$(TOP).ngd: $(BUILD)/$(TOP).ngc $(BOARD_UCF)
+	cd $(BUILD) && ngdbuild -dd _ngo -uc ../../$(BOARD_UCF) -p $(PART) $(TOP).ngc $(TOP).ngd
 
 $(BUILD)/$(TOP)_map.ncd: $(BUILD)/$(TOP).ngd
 	cd $(BUILD) && map -w -p $(PART) -ol high -o $(TOP)_map.ncd $(TOP).ngd $(TOP).pcf

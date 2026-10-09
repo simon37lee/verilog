@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // mandel_model.h : RTL 과 비트 단위로 같은 C++ 기준 모델 (검사 vmon_mandel 과 실시간 뷰어 model_view 가 같이 쓴다)
 //
-//   빌드할 때 -DMANDEL_W / -DMANDEL_IW 로 버전 (rtl/vN/config.mk) 에 맞춘다.
+//   빌드할 때 -DMANDEL_W / -DMANDEL_IW / -DMANDEL_FB_W / -DMANDEL_FB_H 로 버전 (rtl/vN/config.mk) 에 맞춘다.
 //
 //   iterate() : 코어 (mandel_core / mandel_ring) 의 반복과 같은 연산
 //               z = z^2 + c 를 W 비트 (소수부 FRAC) 로 자르고 넘치면 wrap, 탈출 판정은 곱 그대로 |z|^2 > 4
@@ -12,6 +12,8 @@
 // ---------------------------------------------------------------------------
 #pragma once
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
 
 #ifndef MANDEL_W
 #define MANDEL_W 18
@@ -19,10 +21,16 @@
 #ifndef MANDEL_IW
 #define MANDEL_IW 8
 #endif
+#ifndef MANDEL_FB_W
+#define MANDEL_FB_W 320
+#endif
+#ifndef MANDEL_FB_H
+#define MANDEL_FB_H 240
+#endif
 
 namespace mandel {
 
-constexpr int FB_W = 320, FB_H = 240;
+constexpr int FB_W = MANDEL_FB_W, FB_H = MANDEL_FB_H;
 constexpr int W = MANDEL_W, IW = MANDEL_IW, FRAC = W - 4, CW = W + 8, CFRAC = FRAC + 8;
 static_assert(CW <= 63, "coordinates must fit in int64_t");
 
@@ -58,8 +66,9 @@ inline int pixel(int64_t x0, int64_t top, int64_t step, int px, int py, int max_
 
 // ---- mandel_render 의 보기 영역 -------------------------------------------------
 struct View {
-    static constexpr int ZOOM_LOG = (W <= 18) ? 5 : W - 15;
-    static int64_t step0() { return wrap(((__int128)7 << CFRAC) / 640, CW); }
+    // 처음 가로 3.5 -> step = 3.5 / FB_W.  확대 한계는 해상도가 320 보다 크면 한 단계 낮춘다 (픽셀 간격이 좁아서)
+    static constexpr int ZOOM_LOG = ((W <= 18) ? 5 : W - 15) - (FB_W > 320 ? 1 : 0);
+    static int64_t step0() { return wrap(((__int128)7 << CFRAC) / (2 * FB_W), CW); }
     static int64_t tgt(int64_t v48) {           // 소수부 48 비트 목표점 -> CFRAC 비트
         return wrap(CFRAC >= 48 ? (__int128)v48 << (CFRAC - 48) : (__int128)(v48 >> (48 - CFRAC)), CW);
     }
@@ -107,9 +116,27 @@ struct View {
         }
     }
 
-    // S_FRAME: 왼쪽 위 좌표 (160 = 128 + 32, 120 = 128 - 8)
-    int64_t x0() const  { return wrap(cen_re - (step << 7) - (step << 5), CW); }
-    int64_t top() const { return wrap(cen_im + (step << 7) - (step << 3), CW); }
+    // S_FRAME: 왼쪽 위 좌표 = 중심 -/+ 화면 절반
+    int64_t x0() const  { return wrap(cen_re - (__int128)step * (FB_W / 2), CW); }
+    int64_t top() const { return wrap(cen_im + (__int128)step * (FB_H / 2), CW); }
 };
+
+// rtl/common/palette_rom.v 의 "8'dN: rgb <= 24'hRRGGBB;" 줄을 읽는다 (팔레트를 한 곳에서만 관리)
+inline bool load_palette(const char* path, uint32_t pal[256]) {
+    FILE* f = fopen(path, "r");
+    if (!f) return false;
+    char line[256];
+    int  found = 0;
+    while (fgets(line, sizeof line, f)) {
+        unsigned idx, rgb;
+        const char* p = strstr(line, "8'd");
+        if (p && sscanf(p, "8'd%u: rgb <= 24'h%x;", &idx, &rgb) == 2 && idx < 256) {
+            pal[idx] = 0xFF000000u | rgb;
+            found++;
+        }
+    }
+    fclose(f);
+    return found == 256;
+}
 
 }  // namespace mandel
