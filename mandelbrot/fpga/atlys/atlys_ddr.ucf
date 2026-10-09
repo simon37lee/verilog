@@ -63,8 +63,9 @@ TIMESPEC "TS_pix_core" = FROM "TNM_pix" TO "TNM_core" TIG;
 
 # =============================================================================
 # v5: DDR2 (MT47H64M16-25E, MCB 뱅크 3). MIG 3.92 가 만든 par/mig_ddr2.ucf 에서 가져옴
-#   (인스턴스 경로를 u_mig/ 아래로 고치고, MIG 의 입력 클럭 / 리셋 핀과 VCCAUX 줄은 뺐다)
+#   (인스턴스 경로를 u_mig/ 아래로 고치고, MIG 의 입력 클럭 / 리셋 핀 줄은 뺐다)
 # =============================================================================
+CONFIG VCCAUX = "2.5";             # MIG 예제 설계와 같게
 CONFIG MCB_PERFORMANCE = STANDARD;
 NET "u_mig/memc3_wrapper_inst/mcb_ui_top_inst/mcb_raw_wrapper_inst/selfrefresh_mcb_mode" TIG;
 INST "u_mig/memc3_wrapper_inst/mcb_ui_top_inst/mcb_raw_wrapper_inst/gen_term_calib.mcb_soft_calibration_top_inst/mcb_soft_calibration_inst/DONE_SOFTANDHARD_CAL*" TIG;

@@ -92,6 +92,11 @@ module mandel_atlys #(
 
     // ---- DDR2 컨트롤러 (MIG) ----------------------------------------------------
     wire        calib_done;
+
+    // DDR2 보정이 끝날 때까지 나머지 (계산, 화면, TMDS) 는 모두 리셋으로 붙잡아 둔다.
+    // MIG 예제 설계는 보정 중에 DDR2 쪽만 움직이는데, v5 는 처음에 계산 링 (DSP 54 개) 과 TMDS 200 MHz 가 같이
+    // 돌아서 보정이 끝나지 않았다 (이 보드는 v4 에서도 전원 노이즈로 HDMI 가 끊긴 적이 있다)
+    wire sys_ok = pll_locked && calib_done;
     wire        p0_cmd_en, p0_cmd_full, p0_cmd_empty, p0_wr_en, p0_wr_empty;
     wire [2:0]  p0_cmd_instr;
     wire [5:0]  p0_cmd_bl;
@@ -143,7 +148,7 @@ module mandel_atlys #(
 
     mandel_system #(.W(W), .IW(IW), .CORE_HZ(CORE_HZ), .VERSION(VERSION)) u_sys (
         .clk_core(clk_core), .clk_pix(clk_pix),
-        .rst(!btn_rst_n || !pll_locked),
+        .rst(!btn_rst_n || !sys_ok),
         .btn_l(btn_l), .btn_r(btn_r), .btn_u(btn_u), .btn_d(btn_d), .btn_c(btn_c),
         .sw_manual(sw_manual), .sw_single(sw_single),
         .sw_zoom_out(sw_zoom_out), .sw_iter(sw_iter),
@@ -183,10 +188,10 @@ module mandel_atlys #(
     // ---- TMDS 인코딩 (clk_pix) ---------------------------------------------
     reg [3:0] rst_pix_sr = 4'hF;
     reg [3:0] rst_x5_sr  = 4'hF;
-    always @(posedge clk_pix or negedge pll_locked)
-        if (!pll_locked) rst_pix_sr <= 4'hF; else rst_pix_sr <= {rst_pix_sr[2:0], 1'b0};
-    always @(posedge clk_x5 or negedge pll_locked)
-        if (!pll_locked) rst_x5_sr <= 4'hF; else rst_x5_sr <= {rst_x5_sr[2:0], 1'b0};
+    always @(posedge clk_pix or negedge sys_ok)
+        if (!sys_ok) rst_pix_sr <= 4'hF; else rst_pix_sr <= {rst_pix_sr[2:0], 1'b0};
+    always @(posedge clk_x5 or negedge sys_ok)
+        if (!sys_ok) rst_x5_sr <= 4'hF; else rst_x5_sr <= {rst_x5_sr[2:0], 1'b0};
     wire rst_pix = rst_pix_sr[3];
     wire rst_x5  = rst_x5_sr[3];
 
